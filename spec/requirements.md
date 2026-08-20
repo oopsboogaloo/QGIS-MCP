@@ -83,7 +83,7 @@ This is the normative requirements set for the QGIS MCP server. The narrative sp
 
 **REQ-9 (place resolution and ambiguity).** WHEN `search_data_sources` is called with a `place` string rather than a bounding box or AOI polygon, THEN the server SHALL resolve it via `resolve_place` and proceed automatically IF exactly one candidate is returned above the configured confidence threshold; OTHERWISE it SHALL return an error enumerating the candidates with their types and administrative context, rather than selecting one.
 
-*Rationale:* ambiguity should cost one extra round-trip rather than silently producing data for the wrong continent's Sudbury.
+*Rationale:* ambiguity should cost one extra round-trip rather than silently producing data for a similarly-named place on another continent.
 
 **REQ-10 (degraded provider results).** WHEN `search_data_sources` fans out to provider adapters AND one or more adapters fail, time out, or are skipped for missing credentials, THEN the server SHALL return the results from the adapters that succeeded, together with a per-provider status for those that did not, rather than failing the call.
 
@@ -158,7 +158,7 @@ IF the AOI spans multiple UTM zones, THEN the server SHALL NOT select a projecti
 | REQ-6 | `search_pyqgis_docs` | Unknown identifier returns siblings, not "not found" |
 | REQ-7 | `run_processing_algorithm` | Wrong-but-close ID returns fuzzy matches |
 | REQ-8 | `search_data_sources` | Multi-type call returns one grouped response |
-| REQ-9 | `search_data_sources`, `resolve_place` | Ambiguous name (Sudbury) returns candidates; unambiguous proceeds |
+| REQ-9 | `search_data_sources`, `resolve_place` | Ambiguous place name returns candidates; unambiguous proceeds |
 | REQ-10 | Provider dispatcher | Inject failing, timing-out and credential-less adapters; assert menu survives with statuses |
 | REQ-11 | `export_heightmap` | Bit depth ≥16; elevation range matches fixture truth; nodata fixture normalises from real range |
 | REQ-12 | Acquisition registration, export tools | Tier selection against known-answer AOIs; original byte-identical after reprojection; continental AOI returns candidates |
