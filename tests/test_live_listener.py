@@ -38,10 +38,13 @@ from conftest import CollectingServer, describe
 from qgis_mcp_protocol import ErrorCode, ExecutionMode
 from qgis_mcp_protocol.socket_frame import (
     BIND_HOST,
+    DEFAULT_PORT,
     MAX_FRAME_BYTES,
     FrameError,
     LineReader,
+    PortUnavailable,
     Request,
+    claim_port,
     decode_request,
     decode_response,
     encode_request,
@@ -345,6 +348,98 @@ def test_line_reader_reports_a_truncated_frame():
 
 def test_max_frame_is_generous_but_bounded():
     assert 100_000 < MAX_FRAME_BYTES <= 10_000_000
+
+
+# ---------------------------------------------------------------------------
+# Binding
+# ---------------------------------------------------------------------------
+
+
+def test_the_default_port_avoids_blendermcp():
+    """9876 is BlenderMCP's default, and this project feeds Blender.
+
+    The terrain exports exist to produce heightmaps and textures for it, so the
+    two run on the same machine as a matter of course. Sharing the port is not
+    a remote possibility to be handled if it arises; it is the expected case.
+    """
+    assert DEFAULT_PORT != 9876, (
+        "the default port collides with BlenderMCP, whose listener will accept "
+        "the connection and never answer"
+    )
+
+
+def test_the_server_and_the_plugin_agree_on_the_port():
+    """Two literals that match today are two literals that can stop matching.
+
+    The symptom would be a server reporting no live session while the plugin
+    sat listening a port away.
+    """
+    from qgis_mcp_server.config import DEFAULT_LIVE_PORT
+
+    assert DEFAULT_LIVE_PORT == DEFAULT_PORT
+
+
+def test_a_taken_port_is_refused_rather_than_shared():
+    """The Windows bug that cost an afternoon, asserted directly.
+
+    ``SO_REUSEADDR`` means "rebind after TIME_WAIT" on POSIX and "bind a port
+    someone else is actively listening on" on Windows. Under the latter, two
+    listeners split the incoming connections, so a request can be answered by
+    whichever process the kernel picks -- and if the other one speaks a
+    different protocol, the symptom is a timeout rather than a refusal.
+
+    This test is meaningful on every platform, but it is the Windows one it
+    was written for.
+    """
+    holder = claim_port(BIND_HOST, 0)
+    try:
+        taken = holder.getsockname()[1]
+        with pytest.raises(OSError):
+            claim_port(BIND_HOST, taken)
+    finally:
+        holder.close()
+
+
+def test_the_bind_failure_names_the_likely_culprit_and_the_remedy():
+    """A port conflict should not need a packet capture to diagnose.
+
+    The message is the whole of what the user sees -- the plugin puts it
+    straight into a dialog -- so it has to carry both the likely cause and the
+    setting that moves this listener out of the way, rather than errno 10048.
+    """
+    holder = claim_port(BIND_HOST, 0)
+    try:
+        taken = holder.getsockname()[1]
+        with pytest.raises(PortUnavailable) as caught:
+            claim_port(BIND_HOST, taken)
+    finally:
+        holder.close()
+
+    message = str(caught.value)
+    assert str(taken) in message, message
+    assert "9876" in message, message
+    assert "qgis_mcp/port" in message, message
+
+
+def test_claim_port_closes_the_socket_it_could_not_bind():
+    """A failed start must not leak a descriptor each time it is retried.
+
+    The plugin's menu item invites exactly that retry loop: start, see the
+    dialog, change nothing, start again.
+    """
+    holder = claim_port(BIND_HOST, 0)
+    try:
+        taken = holder.getsockname()[1]
+        for _ in range(3):
+            with pytest.raises(PortUnavailable):
+                claim_port(BIND_HOST, taken)
+    finally:
+        holder.close()
+
+    # The port is free the moment the holder lets go, which it would not be if
+    # the failed attempts had left half-open sockets behind.
+    reclaimed = claim_port(BIND_HOST, taken)
+    reclaimed.close()
 
 
 # ---------------------------------------------------------------------------

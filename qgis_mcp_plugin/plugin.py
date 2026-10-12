@@ -95,14 +95,11 @@ class QgisMcpPlugin:
             self._listener = None
             self._set_checked(False)
             # Shown rather than only logged: the user asked for this and needs
-            # to know it did not happen. A port already in use is the common
-            # case and usually means a second QGIS is running.
-            self._warn(
-                f"Could not open the MCP listener on port {port}.\n\n{exc}\n\n"
-                f"Another QGIS session may already have it. Change the port in "
-                f"Settings → Options → Advanced under "
-                f"{SETTING_PORT}, or stop the other listener."
-            )
+            # to know it did not happen. The exception carries the remedy --
+            # which process is likely holding the port and which setting moves
+            # this one -- so it is shown as it is rather than summarised into a
+            # guess that may contradict it.
+            self._warn(f"Could not open the MCP listener on port {port}.\n\n{exc}")
             return
 
         self._set_checked(True)

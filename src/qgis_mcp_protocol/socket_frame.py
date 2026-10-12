@@ -22,6 +22,7 @@ library only, no PyQGIS, and no syntax newer than the Python QGIS bundles.
 from __future__ import annotations
 
 import json
+import socket
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -42,9 +43,19 @@ FRAME_TERMINATOR = b"\n"
 #: should not be the thing that exhausts QGIS's memory.
 MAX_FRAME_BYTES = 1_048_576
 
-#: Default port for the listener. Registered nowhere -- high, unprivileged, and
-#: unlikely to collide with a developer's usual services.
-DEFAULT_PORT = 9876
+#: Default port for the listener. Registered nowhere, high and unprivileged.
+#:
+#: **Not 9876, deliberately.** That is BlenderMCP's default, and this project
+#: exists partly to feed Blender -- the terrain exports in task 5 produce
+#: heightmaps and textures for it, so the two run together on the same machine
+#: as a matter of course. ``design.md`` cites the Blender addon as the model for
+#: the main-thread marshalling, which makes sharing its port a collision between
+#: a tool and its own inspiration.
+#:
+#: The collision was not theoretical: Blender held the port, QGIS bound it
+#: anyway (see the listener's note on SO_REUSEADDR under Windows), and every
+#: request went to Blender and timed out.
+DEFAULT_PORT = 9878
 
 #: Loopback only, and deliberately not configurable to anything else.
 #:
@@ -57,6 +68,68 @@ BIND_HOST = "127.0.0.1"
 
 class FrameError(Exception):
     """A frame could not be read or parsed."""
+
+
+class PortUnavailable(OSError):
+    """The listener could not take the port it was asked for."""
+
+
+def _claim_port_exclusively(server: socket.socket) -> None:
+    """Set the socket option that means "nobody else may have this port".
+
+    Which option that is differs by platform, and the obvious one is wrong on
+    Windows in the way that costs the most time to diagnose. ``SO_REUSEADDR``
+    on POSIX only permits rebinding a port left in ``TIME_WAIT``; on Windows it
+    permits binding a port **another process is actively listening on**, and
+    the two listeners then split incoming connections between them.
+
+    That is not hypothetical. Blender was holding 9876 -- BlenderMCP's default,
+    which is why :data:`DEFAULT_PORT` is no longer that -- and QGIS bound the
+    same port without complaint, reported the listener started, and sent every
+    request to Blender, which accepted the connection and never answered. The
+    symptom was a timeout rather than a refusal, so the plugin looked broken
+    while doing exactly what it had been told.
+
+    ``SO_EXCLUSIVEADDRUSE`` is the Windows counterpart that means what
+    ``SO_REUSEADDR`` means everywhere else. On POSIX ``SO_REUSEADDR`` stays,
+    because a restarted QGIS should not have to wait out ``TIME_WAIT`` before
+    it can listen again.
+    """
+    exclusive = getattr(socket, "SO_EXCLUSIVEADDRUSE", None)
+    if exclusive is not None:  # Windows
+        server.setsockopt(socket.SOL_SOCKET, exclusive, 1)
+    else:
+        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
+
+def claim_port(host: str, port: int, *, backlog: int = 1) -> socket.socket:
+    """Bind and listen on ``host:port``, or raise :class:`PortUnavailable`.
+
+    Lives here rather than in the plugin so that the socket policy and the
+    constants it defends sit together, and so it can be tested without PyQGIS
+    -- the plugin's own modules import Qt, which the server's virtualenv does
+    not have, and an untested bind is how the collision above survived.
+
+    The error message is the whole of what the user sees: the plugin puts it
+    straight into a dialog. So it names the likely culprit and the setting that
+    moves this listener out of the way, rather than reporting errno 10048.
+    """
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    _claim_port_exclusively(server)
+    try:
+        server.bind((host, port))
+    except OSError as exc:
+        server.close()
+        raise PortUnavailable(
+            f"could not listen on {host}:{port} -- {exc}.\n"
+            f"Another process is probably using it. BlenderMCP's default is "
+            f"9876, which is why this one is not.\n"
+            f"Set a different port in QGIS under Settings -> Options -> "
+            f"Advanced, key qgis_mcp/port, and point the server at it with "
+            f"live.port in qgis-mcp.toml or QGIS_MCP_LIVE_PORT."
+        ) from exc
+    server.listen(backlog)
+    return server
 
 
 @dataclass
@@ -203,6 +276,8 @@ __all__ = [
     "DEFAULT_PORT",
     "FRAME_TERMINATOR",
     "MAX_FRAME_BYTES",
+    "PortUnavailable",
+    "claim_port",
     "FrameError",
     "LineReader",
     "Request",

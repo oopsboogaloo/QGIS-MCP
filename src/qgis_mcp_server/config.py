@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from qgis_mcp_protocol.socket_frame import DEFAULT_PORT
 from qgis_mcp_server.credentials import CredentialStore
 from qgis_mcp_server.qgis_install import ENV_QGIS_ROOT, QgisInstall, QgisNotFound, locate
 
@@ -34,8 +35,13 @@ ENV_LIVE_ENABLED = "QGIS_MCP_LIVE_ENABLED"
 #: distrust the tool rather than the data.
 DEFAULT_HEADLESS_TIMEOUT = 300.0
 
-#: Default port for the live listener, matching the plugin's own default.
-DEFAULT_LIVE_PORT = 9876
+#: Default port for the live listener.
+#:
+#: Imported rather than repeated: the server and the plugin must agree on it,
+#: and two literals that happen to match today are two literals that can stop
+#: matching. The symptom would be a server reporting no live session while the
+#: plugin sat listening.
+DEFAULT_LIVE_PORT = DEFAULT_PORT
 
 
 def default_cache_dir() -> Path:

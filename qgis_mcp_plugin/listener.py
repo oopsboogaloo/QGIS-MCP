@@ -29,6 +29,8 @@ from qgis_mcp_protocol.socket_frame import (
     DEFAULT_PORT,
     FrameError,
     LineReader,
+    PortUnavailable,
+    claim_port,
     decode_request,
     encode_response,
 )
@@ -90,14 +92,10 @@ class QgisMcpListener:
         if self.running:
             raise RuntimeError("the listener is already running")
 
-        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        try:
-            server.bind((self._host, self._port))
-        except OSError:
-            server.close()
-            raise
-        server.listen(1)
+        # Binding -- including the socket option that makes a conflict fail
+        # loudly rather than silently sharing the port -- lives in the shared
+        # protocol module. See claim_port for what that defends against.
+        server = claim_port(self._host, self._port)
         # A timeout on the listening socket is what lets the accept loop
         # notice a stop request. Without it, accept() blocks forever and
         # unloading the plugin would leave a thread alive until QGIS exits.
@@ -315,4 +313,4 @@ def _close(sock: socket.socket) -> None:
         pass
 
 
-__all__ = ["CLIENT_IDLE_TIMEOUT", "QgisMcpListener"]
+__all__ = ["CLIENT_IDLE_TIMEOUT", "PortUnavailable", "QgisMcpListener"]
