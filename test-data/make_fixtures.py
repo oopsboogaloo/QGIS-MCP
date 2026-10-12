@@ -418,6 +418,16 @@ def verify() -> None:
     _check(failures, "DEM valid cell count", truth.VALID_CELL_COUNT, int(valid.size))
     _check(failures, "DEM valid minimum", truth.DEM_VALID_MIN, float(valid.min()))
     _check(failures, "DEM valid maximum", truth.DEM_VALID_MAX, float(valid.max()))
+    # The sum checks every valid cell, where min and max check two. A pattern
+    # written with a transposed region or an off-by-one still yields a range of
+    # -5.0 to 342.0 while summing to something else entirely.
+    _check(
+        failures,
+        "DEM valid sum",
+        truth.DEM_VALID_SUM,
+        float(valid.sum()),
+        tolerance=0.5,
+    )
 
     # The two features that separate a correct terrain implementation from one
     # that merely looks correct, checked as counts rather than assumed present.

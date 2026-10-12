@@ -65,6 +65,15 @@ class ErrorCode:
     CHILD_FAILED = "child_failed"
     #: A required input was missing or malformed.
     BAD_REQUEST = "bad_request"
+    #: No algorithm with the given id is registered (REQ-7). Never returned
+    #: bare: it carries fuzzy matches on the name that was asked for.
+    ALGORITHM_NOT_FOUND = "algorithm_not_found"
+    #: The call would destroy something and did not pass ``confirm=true``
+    #: (REQ-4). Carries what would have been overwritten.
+    CONFIRMATION_REQUIRED = "confirmation_required"
+    #: A Processing algorithm ran and reported its own failure -- bad parameter
+    #: values, unreadable input, a provider-side error.
+    ALGORITHM_FAILED = "algorithm_failed"
 
 
 class EnvelopeError(Exception):
@@ -197,22 +206,28 @@ def extract(stream: str) -> tuple[Envelope, str]:
     report anything.
     """
     lines = stream.splitlines()
-    begin_index = None
-    for index in range(len(lines) - 1, -1, -1):
-        if lines[index].strip() == ENVELOPE_BEGIN:
-            begin_index = index
-            break
+    begin_index = next(
+        (
+            index
+            for index in range(len(lines) - 1, -1, -1)
+            if lines[index].strip() == ENVELOPE_BEGIN
+        ),
+        None,
+    )
     if begin_index is None:
         raise EnvelopeError(
             "no envelope in child output -- the process probably died before "
             "the runner could emit one"
         )
 
-    end_index = None
-    for index in range(begin_index + 1, len(lines)):
-        if lines[index].strip() == ENVELOPE_END:
-            end_index = index
-            break
+    end_index = next(
+        (
+            index
+            for index in range(begin_index + 1, len(lines))
+            if lines[index].strip() == ENVELOPE_END
+        ),
+        None,
+    )
     if end_index is None:
         raise EnvelopeError(
             "envelope opened but never closed -- the child was most likely "

@@ -20,6 +20,7 @@ Implemented so far:
 
 - **Task 0** — synthetic test fixtures (`test-data/`)
 - **Task 1** — headless `execute_pyqgis_code_for_cli`
+- **Task 3** — `run_processing_algorithm`, `search_processing_algorithms`
 
 ## Spec deltas
 
@@ -31,6 +32,7 @@ amended.
 |---|---|---|---|
 | `design.md` §2.4 | Use the **FastMCP** decorator API | FastMCP was renamed `MCPServer` in Python SDK 2.x (`from mcp.server.mcpserver import MCPServer`) | Same decorator API, same Pydantic schema derivation — only the import changed. Decision stands; pinned `mcp>=2.3.0` |
 | `design.md` §3.2 | Headless falls back to "a generated standalone PyQGIS script" | Templating agent-authored code into a source file breaks on quoting, and reports traceback line numbers against the generated file rather than the submitted snippet | Code crosses the boundary as **JSON data** to a static runner. Same process topology, same fallback role — see `src/qgis_mcp_server/_child/runner.py` |
+| `requirements.md` REQ-4 | Gates "delete a layer, overwrite a project file, or modify features" | A Processing destination pointing at an existing file is none of those literally, but is the same irreversible local change | `run_processing_algorithm` gates an existing destination *and* any `.qgz`/`.qgs` output behind `confirm=true`. An interpretation, not a silent extension — a destination that does not exist yet is never gated |
 | `tasks.md` Task 0 | Fixtures include "one small real-world clip" | Synthetic values on real SU4080 coordinates cover the CRS *selection* tests without a download | Deferred to task 4.4, where a recorded real provider response is committed as a fixture anyway. See `test-data/README.md` |
 
 ## Requirements

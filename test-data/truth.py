@@ -120,9 +120,56 @@ DEM_BASE_RAMP_MAX = (
     + BASE_COL_COEFF * (DEM_WIDTH - 1)
 )                                                              # 247.0
 
+DEM_VALID_RANGE = DEM_VALID_MAX - DEM_VALID_MIN                # 347.0
+
 #: REQ-11 part 3: the displacement ratio for a plane one Blender unit wide.
 #:     (342.0 - -5.0) / 1000.0 = 0.347
 DEM_DISPLACEMENT_RATIO = (DEM_VALID_MAX - DEM_VALID_MIN) / EXTENT_WIDTH_M
+
+
+def _base_sum(rows: tuple[int, int], cols: tuple[int, int]) -> float:
+    """Sum of the *base ramp* over a half-open rectangular region.
+
+    Computed from the declared pattern, never from a generated file -- which is
+    what keeps this module a declaration rather than a measurement. Written as
+    a loop because the closed form is easy to get subtly wrong by hand, and a
+    wrong constant here would be indistinguishable from a correct one.
+    """
+    return float(
+        sum(
+            BASE_INTERCEPT + BASE_ROW_COEFF * row + BASE_COL_COEFF * col
+            for row in range(*rows)
+            for col in range(*cols)
+        )
+    )
+
+
+_ALL = ((0, DEM_HEIGHT), (0, DEM_WIDTH))
+
+#: Sum over valid cells.
+#:
+#: Worth having because it checks every cell, where the min and max check only
+#: two. A pattern written with a transposed region or an off-by-one would still
+#: produce a range of -5.0 to 342.0 while summing to something else entirely.
+#:
+#: base ramp over the whole grid            433750
+#:   + hill uplift (200 x 25 cells)          +5000
+#:   - coastal inlet replaced by -3.0        -7700
+#:   - basin replaced by -5.0                -5025
+#:   - nodata region excluded                -1350
+#:                                        = 424675
+DEM_VALID_SUM = (
+    _base_sum(*_ALL)
+    + HILL_UPLIFT * HILL_CELL_COUNT
+    - _base_sum(COAST_ROWS, COAST_COLS)
+    + COAST_ELEVATION * COAST_CELL_COUNT
+    - _base_sum(BASIN_ROWS, BASIN_COLS)
+    + BASIN_ELEVATION * BASIN_CELL_COUNT
+    - _base_sum(NODATA_ROWS, NODATA_COLS)
+)                                                              # 424675.0
+
+#: Mean over valid cells, as Processing's raster statistics reports it.
+DEM_VALID_MEAN = DEM_VALID_SUM / VALID_CELL_COUNT
 
 #: The REQ-11 trap, stated as a number so a test can assert the *wrong* answer
 #: is not being produced. An implementation that normalises without masking
@@ -294,6 +341,52 @@ PROJECT_LAYER_NAMES = [
 PROJECT_LAYER_COUNT = len(PROJECT_LAYER_NAMES)                 # 4
 PROJECT_RASTER_LAYER_COUNT = 1
 PROJECT_VECTOR_LAYER_COUNT = 3
+
+# ---------------------------------------------------------------------------
+# Processing expectations (task 3)
+# ---------------------------------------------------------------------------
+#
+# Hand-calculable outputs for known algorithms on these fixtures, which is what
+# tasks.md task 3 asks its test to assert: "known algorithm + fixture input ->
+# hand-calculable expected output".
+
+#: Enum option numbers for native:buffer. Not guessable -- they come from the
+#: algorithm's own parameter definition, and the geometry below depends on them.
+BUFFER_JOIN_STYLE_MITER = 1
+BUFFER_END_CAP_FLAT = 1
+BUFFER_DISTANCE_M = 10.0
+
+#: Buffering the AOI rectangle outward by d with *miter* joins gives a larger
+#: rectangle -- a miter join at a convex right angle extends to a sharp corner,
+#: filling the full d x d square. So the result is exactly
+#: (400 + 2d) x (300 + 2d) = 420 x 320, with no arcs to approximate.
+#:
+#: Round joins would make the corners quarter-circles and the area
+#: 120000 + 1400d + pi*d^2, which no longer has an exact decimal value -- hence
+#: the miter.
+AOI_BUFFERED_WIDTH_M = AOI_BOUNDARY_WIDTH_M + 2 * BUFFER_DISTANCE_M     # 420.0
+AOI_BUFFERED_HEIGHT_M = AOI_BOUNDARY_HEIGHT_M + 2 * BUFFER_DISTANCE_M   # 320.0
+AOI_BUFFERED_AREA_M2 = AOI_BUFFERED_WIDTH_M * AOI_BUFFERED_HEIGHT_M     # 134400.0
+AOI_BUFFERED_EXTENT = (
+    AOI_BOUNDARY_RING[0][0] - BUFFER_DISTANCE_M,
+    AOI_BOUNDARY_RING[0][1] - BUFFER_DISTANCE_M,
+    AOI_BOUNDARY_RING[1][0] + BUFFER_DISTANCE_M,
+    AOI_BOUNDARY_RING[2][1] + BUFFER_DISTANCE_M,
+)                                     # (440190.0, 180290.0, 440610.0, 180610.0)
+
+#: What native:rasterlayerstatistics must report for the primary DEM. These are
+#: the same numbers declared above, restated under the keys the algorithm uses,
+#: so a test can compare the two directly. COUNT excluding the nodata cells is
+#: the independent confirmation that Processing honours the sentinel.
+RASTER_STATISTICS = {
+    "COUNT": VALID_CELL_COUNT,        # 2491
+    "MIN": DEM_VALID_MIN,             # -5.0
+    "MAX": DEM_VALID_MAX,             # 342.0
+    "RANGE": DEM_VALID_RANGE,         # 347.0
+    "SUM": DEM_VALID_SUM,             # 424675.0
+    "MEAN": DEM_VALID_MEAN,
+}
+
 
 # ---------------------------------------------------------------------------
 # Expected output of all fixtures

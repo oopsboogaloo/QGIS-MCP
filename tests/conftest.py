@@ -129,6 +129,49 @@ def runner(context):
     return context.headless
 
 
+@pytest.fixture(scope="session")
+def processing(context):
+    """The Processing runner, with its catalogue cached for the session."""
+    return context.processing
+
+
+class CollectingServer:
+    """Stands in for ``MCPServer`` to capture what a tool module registers.
+
+    Calling a tool through the real server means going through MCP's content
+    encoding and back, which tests the SDK rather than the tool. This records
+    the decorated callables instead, so a behavioural test exercises the real
+    ``register()`` function and then calls the real tool body directly.
+
+    The registration *itself* -- names, descriptions, schemas -- is checked
+    against a real ``MCPServer`` separately, since that is the part a shim
+    could let drift.
+    """
+
+    def __init__(self) -> None:
+        self.tools: dict[str, object] = {}
+        self.descriptions: dict[str, str] = {}
+
+    def tool(self, name=None, description=None, **_kwargs):
+        def decorate(function):
+            key = name or function.__name__
+            self.tools[key] = function
+            self.descriptions[key] = description or function.__doc__ or ""
+            return function
+
+        return decorate
+
+
+@pytest.fixture(scope="session")
+def tools(context):
+    """Every registered tool, as directly callable functions."""
+    from qgis_mcp_server.tools import register_all
+
+    server = CollectingServer()
+    register_all(server, context)
+    return server
+
+
 # ---------------------------------------------------------------------------
 # Assertion helpers (REQ-T3)
 # ---------------------------------------------------------------------------

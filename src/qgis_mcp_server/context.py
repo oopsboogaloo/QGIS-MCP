@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 
 from qgis_mcp_server.config import Config
 from qgis_mcp_server.headless import HeadlessRunner
+from qgis_mcp_server.processing import ProcessingRunner
 
 
 @dataclass
@@ -20,9 +21,13 @@ class ServerContext:
 
     config: Config
     headless: HeadlessRunner = field(init=False)
+    #: Shared rather than per-call, because it caches the algorithm catalogue
+    #: and that costs a QGIS startup to build.
+    processing: ProcessingRunner = field(init=False)
 
     def __post_init__(self) -> None:
         self.headless = HeadlessRunner(self.config)
+        self.processing = ProcessingRunner(self.config)
 
     def close(self) -> None:
         self.headless.close()
