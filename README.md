@@ -44,7 +44,9 @@ Implemented so far:
   `get_screenshot_of_window`, `zoom_to_layer`, `set_active_layer`,
   `toggle_layer_visibility`, `list_project_backups`
 - **Task 4.8** — the remaining provider adapters: OS Data Hub (NGD Features),
-  OpenStreetMap (Overpass), Natural Earth, BGS (WMS)
+  OpenStreetMap (Overpass), Natural Earth, BGS (WMS), and Environment Agency
+  LIDAR (WCS), which the spec does not list but which is the best elevation
+  available for England by two orders of magnitude
 - **Task 7** — `search_pyqgis_docs`, `get_pyqgis_class_docs`
 
 Not started: **task 8** (write operations), which the spec defers.
@@ -67,6 +69,7 @@ amended.
 | `tasks.md` 4.8 | "Remaining adapters. Independent of each other; add one at a time." | Three of the four are vector, and the download pipeline was raster-only: `paths_for` hardcoded `suffix = ".tif"` and reprojection was `gdal:warpreproject`. Running OSM or OS through it would have written GeoJSON into a file named `.tif` | The pipeline derives the extension from `Dataset.format` and takes `native:reprojectlayer` for vector. Adapters that cannot be driven are not a deliverable, so this was done as part of 4.8 rather than deferred |
 | `catalogue.py` BGS | "the 1:625,000-scale products are available under OGL" | The live service states its own terms, and they are broader than OGL: "made available for all uses - including commercial use". Separately, BGS's `BGS_Detailed_Geology` service is 1:50,000 — the *licensed* tier — and is trivially reachable | The adapter serves only the 625k service, and reads the access constraints from GetCapabilities rather than restating them, so the licence cannot go stale in a constant. The 50k service is deliberately not offered |
 | `catalogue.py` OS Data Hub | Lists `elevation` and `admin_boundaries` among its data types | Both come from the OS *Downloads* API; the NGD Features API this adapter uses serves neither | The capability declaration is left alone — OS does offer them — and the adapter reports per data type where they actually live, so asking for UK elevation says "Downloads API, and OpenTopography works today" rather than returning nothing |
+| `tasks.md` 4.8 scope | Names four adapters: OS Data Hub, Natural Earth, OpenStreetMap, BGS | Writing them exposed how poor 30 m global elevation is at town scale — hillshading COP30 at 1:10,000 draws every cell boundary as a ridge. The Environment Agency publishes 1 m LIDAR for England under OGL, free and unmetered, already in EPSG:27700 | Added as a fifth adapter the spec does not list. It is ~900x the cells over the same ground and needs no reprojection, so for English work it supersedes the global DEMs rather than supplementing them. Recorded here because it is scope the spec did not ask for |
 | `tasks.md` Task 0 | Fixtures include "one small real-world clip" | Synthetic values on real SU4080 coordinates cover the CRS *selection* tests without a download | Deferred to task 4.4, where a recorded real provider response is committed as a fixture anyway. See `test-data/README.md` |
 
 ## Requirements
@@ -270,14 +273,43 @@ a real menu rather than one elevation entry:
 | Provider | Serves | Notes |
 |---|---|---|
 | **OS Data Hub** | roads, buildings, water, land, named points | OGC API Features with true server-side bbox filtering. Collection versions are discovered, not pinned. Each page is a chargeable transaction, so paging is capped and a truncated fetch says so |
+| **Environment Agency** | elevation | 1 m LIDAR DTM for England, already in EPSG:27700 so nothing is reprojected. Free and unmetered, which makes *size* the constraint: ~4 MB per km², so resolution is chosen to fit a budget and an absurd AOI is refused before it is sent |
 | **OpenTopography** | elevation | Global DEMs; 50 calls per 24 hours on the free tier |
 | **OpenStreetMap** | roads, buildings, water, land use, places | Tiles large AOIs and merges with de-duplication. Refuses continental AOIs rather than issuing hundreds of queries at a free shared service |
 | **BGS** | geology | 1:625k DiGMap as georeferenced images. WMS, so it can be displayed but not queried by attribute |
 | **Natural Earth** | boundaries, coastline, water, roads, places | Whole-world files with no bbox filtering, so `clip_to_aoi` is a dependency rather than a convenience. Warns when the AOI is too small for even its most detailed scale |
 
-Ranking is explicit rather than incidental: OS leads inside the UK, Natural
-Earth is last everywhere, because it answers for every AOI on Earth and would
-otherwise win by being listed.
+Ranking is explicit rather than incidental: EA LIDAR and OS lead inside their
+coverage, Natural Earth is last everywhere, because it answers for every AOI on
+Earth and would otherwise win by being listed. For a town in England the
+elevation menu now opens with 1 m LIDAR rather than 30 m COP30 — about 900
+times the cells over the same ground, which is the difference between a
+hillshade that reads as terrain at 1:10,000 and one that reads as graph paper.
+
+### Transformation grids
+
+Worth installing once, on any machine doing British work:
+
+```sh
+# OSTN15: the OSGB36 <-> ETRS89 grid shift, and OSGM15 for ODN heights
+curl -o "$LOCALAPPDATA/proj/uk_os_OSTN15_NTv2_OSGBtoETRS.tif" https://cdn.proj.org/uk_os_OSTN15_NTv2_OSGBtoETRS.tif
+curl -o "$LOCALAPPDATA/proj/uk_os_OSGM15_GB.tif"              https://cdn.proj.org/uk_os_OSGM15_GB.tif
+```
+
+OSGB36 is not a mathematical surface — it carries a few metres of accumulated
+distortion from the 1935–62 retriangulation, varying place to place, which no
+7-parameter formula undoes. Without the grid, PROJ falls back to a transform it
+declares as **2 m**; with it, the **1 m** operation becomes available (the
+residual there is WGS84's own realisation, not OSTN15 — against ETRS89 the grid
+is centimetric).
+
+Measured on this project's own AOI: installing it moved Sudbury's town centre
+by **2.59 m**, from 587326.38, 241494.97 to 587324.29, 241493.44. That is
+nothing at 1:25,000 and visible at 1:1,250.
+
+QGIS can fetch these itself if you enable **Settings → Options → Network →
+Allow PROJ to download transformation grids**; it is off by default, which is
+why the warning appears rather than resolving silently.
 
 ## Looking up the API
 
@@ -325,7 +357,7 @@ bodies, which are where the actual parsing happens. Re-record with
 `test-data/record_provider_fixtures.py` (spends 3 API calls).
 
 **Integration tests are excluded from the default pass**, and that is not a
-preference. There are six, one per live service, and between them they spend
+preference. There are seven, one per live service, and between them they spend
 OpenTopography calls against an allowance of 50 per 24 hours and OS Data Hub
 transactions against a paid monthly allowance — so a plain `pytest` must not
 touch them. The other three (Overpass, Natural Earth, BGS) are free, but they

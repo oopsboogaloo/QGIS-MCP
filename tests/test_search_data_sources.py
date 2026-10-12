@@ -248,7 +248,7 @@ def test_a_provider_out_of_coverage_explains_itself(tools):
     assert payload["by_data_type"][DataType.ELEVATION], describe(payload)
 
 
-def test_the_declared_versus_implemented_gap_is_stated(tools):
+def test_the_declared_versus_implemented_gap_is_stated(tools, context):
     """A declared provider with no adapter is named, not silently omitted.
 
     Otherwise its absence is indistinguishable from a provider that had
@@ -258,11 +258,17 @@ def test_the_declared_versus_implemented_gap_is_stated(tools):
     is the other four. That is a property of the fixture, not of the product —
     see the test below, which asserts against the real adapter set.
     """
+    from qgis_mcp_server.providers.catalogue import ALL_PROVIDERS
+
     payload = search(tools, bbox=UK_BBOX)
     pending = {entry["name"] for entry in payload["providers_not_yet_implemented"]}
-    assert pending == {"os_data_hub", "natural_earth", "openstreetmap", "bgs"}, (
-        sorted(pending)
-    )
+
+    # The fixture wires exactly one adapter, so the gap is everything else —
+    # derived from the catalogue rather than listed, so adding a provider does
+    # not fail this test for a reason that has nothing to do with it.
+    wired = {adapter.name for adapter in context.providers.adapters}
+    assert pending == {p.name for p in ALL_PROVIDERS} - wired, sorted(pending)
+
     for entry in payload["providers_not_yet_implemented"]:
         assert "not yet implemented" in entry["status"], entry
 
@@ -381,16 +387,24 @@ def test_search_reports_the_serving_mode(tools):
 
 
 def test_licence_info_reports_every_provider(tools):
+    """Every declared provider, derived rather than listed.
+
+    A hardcoded set here would be a second copy of the catalogue, and the two
+    drift: adding a provider fails this test for no reason, which trains people
+    to update the list without reading it. Comparing against ALL_PROVIDERS
+    keeps the assertion meaning what its name says — a provider that gains no
+    licence entry still fails.
+    """
+    from qgis_mcp_server.providers.catalogue import ALL_PROVIDERS
+
     payload = tools.tools["get_dataset_licence_info"]()
     assert payload["ok"] is True, describe(payload)
     reported = {entry["provider"] for entry in payload["licences"]}
-    assert reported == {
-        "os_data_hub",
-        "opentopography",
-        "natural_earth",
-        "openstreetmap",
-        "bgs",
-    }, sorted(reported)
+    declared = {provider.name for provider in ALL_PROVIDERS}
+    assert reported == declared, (
+        f"missing a licence entry: {sorted(declared - reported)}; "
+        f"unexpected: {sorted(reported - declared)}"
+    )
 
 
 def test_licence_info_states_the_osm_share_alike_obligation(tools):

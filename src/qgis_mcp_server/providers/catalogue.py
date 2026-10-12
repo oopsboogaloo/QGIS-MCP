@@ -237,6 +237,43 @@ OPENSTREETMAP = ProviderCapability(
     ),
 )
 
+#: The Environment Agency's LIDAR composite, under the Open Government Licence.
+#:
+#: Read off the service itself: its WCS capabilities declare Fees NONE and
+#: AccessConstraints NONE, and the programme is published under OGL.
+EA_LIDAR_LICENCE = LicenceDeclaration(
+    tier=LicenceTier.OPEN_ATTRIBUTION,
+    summary=(
+        "UK Open Government Licence: free to use, adapt and sell on, with "
+        "attribution. The WCS declares no fees and no access constraints."
+    ),
+    attribution="© Environment Agency copyright and/or database right 2024",
+    url="https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
+)
+
+ENVIRONMENT_AGENCY = ProviderCapability(
+    name="environment_agency",
+    long_name="Environment Agency LIDAR (England)",
+    protocol_family="ogc",
+    data_types=(DataType.ELEVATION,),
+    licence=EA_LIDAR_LICENCE,
+    # Transformed from the service's own declared BNG envelope rather than
+    # drawn by hand, so it cannot disagree with what the server will serve.
+    # Note this is the envelope, not the coverage: the composite has genuine
+    # holes, which the adapter reports per fetch rather than pretending away.
+    coverage=(-7.1047, 49.8506, 1.987, 55.8781),
+    coverage_description="England (envelope; the composite has gaps)",
+    requires_credentials=False,
+    notes=(
+        "1 m DTM at roughly 900 times the cell count of a 30 m global DEM, "
+        "already in EPSG:27700 so no datum transform is needed. Heights are "
+        "Ordnance Datum Newlyn, not the EGM2008 the global DEMs use (REQ-13). "
+        "At 4 MB per square kilometre, size is the constraint that shapes "
+        "every request: a town-sized AOI is hundreds of megabytes at full "
+        "resolution."
+    ),
+)
+
 BGS = ProviderCapability(
     name="bgs",
     long_name="British Geological Survey",
@@ -257,6 +294,7 @@ BGS = ProviderCapability(
 ALL_PROVIDERS = (
     OS_DATA_HUB,
     OPENTOPOGRAPHY,
+    ENVIRONMENT_AGENCY,
     NATURAL_EARTH,
     OPENSTREETMAP,
     BGS,
@@ -289,6 +327,8 @@ __all__ = [
     "ALL_CREDENTIALS",
     "ALL_PROVIDERS",
     "BGS",
+    "EA_LIDAR_LICENCE",
+    "ENVIRONMENT_AGENCY",
     "NATURAL_EARTH",
     "OPENSTREETMAP",
     "OPENTOPOGRAPHY",

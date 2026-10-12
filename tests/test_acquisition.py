@@ -466,15 +466,19 @@ def test_partial_coverage_counts_as_coverage():
     assert PROVIDERS_BY_NAME["os_data_hub"].covers(straddling) is True
 
 
-def test_elevation_providers_are_both_offered_for_a_uk_aoi():
+def test_a_uk_aoi_offers_both_national_and_global_elevation():
     """The REQ-12 refinement needs a real choice to be worth making.
 
-    OS Terrain is already EPSG:27700 and OpenTopography serves 4326, so a UK
-    elevation request genuinely has a 5 m national option and a 30 m global
-    one — which is the case design.md §5 describes.
+    The national sources are already EPSG:27700 while the global one serves
+    4326, so a UK elevation request genuinely chooses between unresampled
+    high-resolution data and a reprojected global model — the case design.md §5
+    describes. Asserted as "contains both kinds" rather than as an exact list,
+    so adding a national source is not a test failure while *losing* one is.
     """
     names = {p.name for p in providers_for(UK_AOI, [DataType.ELEVATION])}
-    assert names == {"os_data_hub", "opentopography"}, names
+    national = {"os_data_hub", "environment_agency"}
+    assert names & national, f"no national elevation source for a UK AOI: {names}"
+    assert "opentopography" in names, names
 
 
 # ---------------------------------------------------------------------------

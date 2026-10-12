@@ -24,6 +24,7 @@ from qgis_mcp_server.processing import ProcessingRunner
 from qgis_mcp_server.pyqgis_docs import DocsRunner
 from qgis_mcp_server.providers.bgs import BgsAdapter
 from qgis_mcp_server.providers.dispatcher import ProviderDispatcher
+from qgis_mcp_server.providers.environment_agency import EnvironmentAgencyAdapter
 from qgis_mcp_server.providers.natural_earth import NaturalEarthAdapter
 from qgis_mcp_server.providers.openstreetmap import OpenStreetMapAdapter
 from qgis_mcp_server.providers.opentopography import OpenTopographyAdapter
@@ -46,10 +47,11 @@ class ServerContext:
     places: PlaceResolver = field(init=False)
     #: Data provider adapters, behind the REQ-10 dispatcher.
     #:
-    #: Only the providers with an implemented adapter appear here. The five
-    #: declared in providers/catalogue.py are the v1 target; the gap between
-    #: the two is reported by search_data_sources rather than left to look
-    #: like a provider that had nothing to offer.
+    #: Every provider declared in providers/catalogue.py has an adapter here,
+    #: and a test asserts the two sets match in both directions. The machinery
+    #: for reporting a declared-but-unimplemented provider stays, because the
+    #: alternative when one is added is an absence indistinguishable from a
+    #: provider that simply had nothing for the area.
     providers: ProviderDispatcher = field(init=False)
     #: Download, reproject and register (task 4.7).
     acquisition: AcquisitionRunner = field(init=False)
@@ -80,6 +82,7 @@ class ServerContext:
         self.providers = ProviderDispatcher(
             adapters=(
                 OsDataHubAdapter(self.credentials),
+                EnvironmentAgencyAdapter(self.credentials),
                 OpenTopographyAdapter(self.credentials),
                 OpenStreetMapAdapter(self.credentials),
                 BgsAdapter(self.credentials),
