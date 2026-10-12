@@ -43,10 +43,11 @@ Implemented so far:
   `get_live_session`, `execute_pyqgis_code`, `get_screenshot_of_canvas`,
   `get_screenshot_of_window`, `zoom_to_layer`, `set_active_layer`,
   `toggle_layer_visibility`, `list_project_backups`
+- **Task 4.8** — the remaining provider adapters: OS Data Hub (NGD Features),
+  OpenStreetMap (Overpass), Natural Earth, BGS (WMS)
 - **Task 7** — `search_pyqgis_docs`, `get_pyqgis_class_docs`
 
-Not started: **task 4.8** (OS Data Hub, Natural Earth, Overpass and BGS
-adapters) and **task 8** (write operations), which the spec defers.
+Not started: **task 8** (write operations), which the spec defers.
 
 ## Spec deltas
 
@@ -63,6 +64,9 @@ amended.
 | `design.md` §3.1 | Marshal to the main thread with "`QTimer.singleShot(0, callable)`, **or** a signal connected with `Qt.QueuedConnection`" | The two are not interchangeable from the socket thread. Measured on QGIS 4.2.1 / Qt 6.11: `singleShot` returns without raising, the callable never fires (polled for two seconds), and from that point the **main event loop stops responding at all**. A timer must be started in the thread that will run it, and the socket thread has no event loop | The queued signal, which is the spec's own second option — `MainThreadMarshaller` owns a main-thread `QObject` and a `pyqtSignal` connected `Qt.ConnectionType.QueuedConnection`. The alternative is recorded because the spec presents it first and as an equal |
 | `tasks.md` 6.2 | A main-thread violation "cannot be validated by a test that merely passes" | True of the *consequences*; not of the boundary. A headless `QgsApplication([], False)` is still a `QApplication`, `exec()` runs a real event loop, and a signal from a worker thread dispatches to the thread that called `exec()` exactly as in the GUI | The boundary **is** tested: `tests/live_harness.py` runs the real listener in a headless QGIS and the suite asserts across a socket that handlers execute on the main thread, verified by mutation (bypassing `submit()` fails all three assertions). Only the canvas and window captures still need a GUI, and they assert `mode_unavailable` here |
 | `requirements.md` REQ-1b | A mode-agnostic tool prefers the live session "when one is reachable" | Most mode-agnostic tools have no live implementation — there is no live counterpart to `search_processing_algorithms` or `export_heightmap`, so reporting `live` because a session happens to be open would misstate where the work ran | Preference is declared per tool in `modes.LIVE_CAPABLE_TOOLS`, currently **empty**: task 6 delivers the mode-*named* live tools only. A tool absent from the set reports headless with "no live implementation" as its reason, which is a different statement from "no live session was found". Each entry gets added with the live implementation that earns it |
+| `tasks.md` 4.8 | "Remaining adapters. Independent of each other; add one at a time." | Three of the four are vector, and the download pipeline was raster-only: `paths_for` hardcoded `suffix = ".tif"` and reprojection was `gdal:warpreproject`. Running OSM or OS through it would have written GeoJSON into a file named `.tif` | The pipeline derives the extension from `Dataset.format` and takes `native:reprojectlayer` for vector. Adapters that cannot be driven are not a deliverable, so this was done as part of 4.8 rather than deferred |
+| `catalogue.py` BGS | "the 1:625,000-scale products are available under OGL" | The live service states its own terms, and they are broader than OGL: "made available for all uses - including commercial use". Separately, BGS's `BGS_Detailed_Geology` service is 1:50,000 — the *licensed* tier — and is trivially reachable | The adapter serves only the 625k service, and reads the access constraints from GetCapabilities rather than restating them, so the licence cannot go stale in a constant. The 50k service is deliberately not offered |
+| `catalogue.py` OS Data Hub | Lists `elevation` and `admin_boundaries` among its data types | Both come from the OS *Downloads* API; the NGD Features API this adapter uses serves neither | The capability declaration is left alone — OS does offer them — and the adapter reports per data type where they actually live, so asking for UK elevation says "Downloads API, and OpenTopography works today" rather than returning nothing |
 | `tasks.md` Task 0 | Fixtures include "one small real-world clip" | Synthetic values on real SU4080 coordinates cover the CRS *selection* tests without a download | Deferred to task 4.4, where a recorded real provider response is committed as a fixture anyway. See `test-data/README.md` |
 
 ## Requirements

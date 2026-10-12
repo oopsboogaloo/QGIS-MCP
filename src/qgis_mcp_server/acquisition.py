@@ -62,6 +62,48 @@ RESAMPLING_NEAREST = 0
 #: the synthetic fixtures use.
 NODATA_SENTINEL = -9999.0
 
+#: File extension per provider format, for the downloaded original.
+#:
+#: This existed as a hardcoded ``.tif`` until task 4.8, which was correct while
+#: the only adapter served GeoTIFF elevation. Three of the adapters added there
+#: are vector, and writing GeoJSON into a file named ``.tif`` is the precise
+#: failure this project keeps finding: nothing errors, the file is real, and it
+#: lies about itself to every tool that opens it afterwards -- including GDAL,
+#: which sniffs content but reports the driver by a name that then disagrees
+#: with the extension in every log and error message.
+SUFFIX_BY_FORMAT = {
+    "GTiff": ".tif",
+    "GeoTIFF": ".tif",
+    "GeoJSON": ".geojson",
+    "GML": ".gml",
+    "SHP-ZIP": ".zip",
+    "GPKG": ".gpkg",
+}
+
+#: Formats that are vector, and so need a vector reprojection algorithm.
+#:
+#: ``gdal:warpreproject`` is raster-only. Handed a GeoJSON it fails rather than
+#: corrupting anything, but it fails with a GDAL message about band counts,
+#: which sends the reader looking in the wrong place entirely.
+VECTOR_FORMATS = frozenset({"GeoJSON", "GML", "SHP-ZIP", "GPKG"})
+
+
+def suffix_for(dataset: Dataset) -> str:
+    """Extension for a downloaded original, from the dataset's declared format.
+
+    Unknown formats fall back to ``.dat`` rather than to ``.tif``: a neutral
+    extension says "unidentified bytes", and a wrong-but-plausible one asserts
+    something false about the contents.
+    """
+    if not dataset.format:
+        return ".tif" if dataset.data_type == "elevation" else ".dat"
+    return SUFFIX_BY_FORMAT.get(dataset.format, ".dat")
+
+
+def is_vector(dataset: Dataset) -> bool:
+    """Whether this dataset is vector, and so takes the vector code path."""
+    return (dataset.format or "") in VECTOR_FORMATS
+
 
 @dataclass
 class AcquisitionPlan:
@@ -148,7 +190,7 @@ class AcquisitionRunner:
         ).hexdigest()[:10]
         folder = self.download_dir / dataset.provider
         stem = f"{dataset.identifier}_{digest}"
-        suffix = ".tif"
+        suffix = suffix_for(dataset)
         crs_tag = target_crs.replace(":", "").replace("+", "").replace(" ", "")[:24]
         return (
             folder / f"{stem}_original{suffix}",
@@ -394,7 +436,42 @@ class AcquisitionRunner:
 
         # --- reproject (REQ-12), original untouched -----------------------
         layer_path = plan.original_path
-        if plan.will_reproject:
+        if plan.will_reproject and is_vector(plan.dataset):
+            # Vector takes a different algorithm, not different parameters.
+            # Resampling and nodata are raster concepts and have no meaning
+            # for a set of coordinates: reprojecting a road moves its vertices
+            # exactly, with nothing to interpolate and no gaps to fill.
+            envelope = self.processing.run(
+                "native:reprojectlayer",
+                {
+                    "INPUT": str(plan.original_path),
+                    "TARGET_CRS": plan.target_crs,
+                    "OUTPUT": str(plan.reprojected_path),
+                },
+                confirm=True,
+                timeout=timeout,
+            )
+            if not envelope.ok:
+                return error(
+                    ErrorCode.ALGORITHM_FAILED,
+                    f"downloaded {plan.dataset.identifier} but could not "
+                    f"reproject it to {plan.target_crs}. The original is kept "
+                    f"at {plan.original_path}.",
+                    original_path=str(plan.original_path),
+                    reprojection_error=envelope.error,
+                )
+            layer_path = plan.reprojected_path
+            steps.append(
+                {
+                    "step": "reproject",
+                    "from_crs": plan.dataset.crs,
+                    "to_crs": plan.target_crs,
+                    "geometry": "vector",
+                    "path": str(plan.reprojected_path),
+                    "original_retained": str(plan.original_path),
+                }
+            )
+        elif plan.will_reproject:
             envelope = self.processing.run(
                 "gdal:warpreproject",
                 {

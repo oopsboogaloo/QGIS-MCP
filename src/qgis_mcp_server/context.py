@@ -22,8 +22,12 @@ from qgis_mcp_server.geocoding import (
 )
 from qgis_mcp_server.processing import ProcessingRunner
 from qgis_mcp_server.pyqgis_docs import DocsRunner
+from qgis_mcp_server.providers.bgs import BgsAdapter
 from qgis_mcp_server.providers.dispatcher import ProviderDispatcher
+from qgis_mcp_server.providers.natural_earth import NaturalEarthAdapter
+from qgis_mcp_server.providers.openstreetmap import OpenStreetMapAdapter
 from qgis_mcp_server.providers.opentopography import OpenTopographyAdapter
+from qgis_mcp_server.providers.os_data_hub import OsDataHubAdapter
 from qgis_mcp_server.terrain import TerrainRunner
 
 
@@ -68,8 +72,19 @@ class ServerContext:
                 ),
             )
         )
+        # Order is stable so responses are reproducible; it is not a ranking.
+        # Which dataset leads a menu comes from Dataset.preference, which the
+        # dispatcher sorts on -- OS inside the UK, OpenTopography for global
+        # elevation, Natural Earth last because it answers for everywhere and
+        # would otherwise win everywhere by default.
         self.providers = ProviderDispatcher(
-            adapters=(OpenTopographyAdapter(self.credentials),)
+            adapters=(
+                OsDataHubAdapter(self.credentials),
+                OpenTopographyAdapter(self.credentials),
+                OpenStreetMapAdapter(self.credentials),
+                BgsAdapter(self.credentials),
+                NaturalEarthAdapter(self.credentials),
+            )
         )
         self.terrain = TerrainRunner(headless=self.headless)
         self.docs = DocsRunner(config=self.config, headless=self.headless)
