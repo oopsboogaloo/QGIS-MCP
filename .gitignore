@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+
+# uv. The lockfile IS tracked: this is an application, not a library, and
+# a pinned resolution is what makes `uv sync` reproduce a known-good
+# environment rather than today's.
+.uv/
+
+# Test / tooling
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Generated fixtures — the generator is tracked, its output is not.
+# See test-data/README.md for how to regenerate.
+test-data/generated/
+
+# Local configuration: contains absolute QGIS paths and provider API keys.
+qgis-mcp.toml
+.env
+
+# Runtime output
+*.log
+backups/
+
+# Demo output from a terrain run. Regenerable; not part of the project.
+terrain-demo/

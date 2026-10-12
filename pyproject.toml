@@ -1,0 +1,41 @@
+[project]
+name = "qgis-mcp"
+version = "0.1.0"
+description = "An MCP server exposing QGIS over a live plugin listener and a headless child-process path"
+readme = "README.md"
+# QGIS 4.2 bundles Python 3.12. The shared protocol module must stay importable
+# under the QGIS-bundled interpreter as well as this one (spec/design.md §2.3),
+# so the floor is set by QGIS, not by preference.
+requires-python = ">=3.12"
+dependencies = [
+    "mcp[cli]>=2.3.0",
+]
+
+[project.scripts]
+qgis-mcp = "qgis_mcp_server.__main__:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/qgis_mcp_protocol", "src/qgis_mcp_server"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Fixture-based assertions compare structured values; the long diffs are the
+# point (REQ-T3), so don't let pytest truncate them.
+#
+# Integration tests are excluded by default, and that is not a preference: they
+# spend OpenTopography API calls against an allowance of 50 per 24 hours, so a
+# plain `pytest` must not touch them. Run them deliberately with
+# `pytest -m integration`, which overrides this.
+addopts = "-ra --verbose -m 'not integration'"
+markers = [
+    "integration: hits the network or a live QGIS session, and may spend API quota; excluded from the default pass",
+]
