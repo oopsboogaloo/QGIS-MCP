@@ -249,10 +249,14 @@ def test_a_provider_out_of_coverage_explains_itself(tools):
 
 
 def test_the_declared_versus_implemented_gap_is_stated(tools):
-    """Four of the five declared providers have no adapter yet.
+    """A declared provider with no adapter is named, not silently omitted.
 
-    Omitting them would make their absence indistinguishable from a provider
-    that had nothing for this area — so the gap is named rather than implied.
+    Otherwise its absence is indistinguishable from a provider that had
+    nothing for this area, and the two call for completely different responses.
+
+    This module's fixture deliberately runs one adapter, so the gap it reports
+    is the other four. That is a property of the fixture, not of the product —
+    see the test below, which asserts against the real adapter set.
     """
     payload = search(tools, bbox=UK_BBOX)
     pending = {entry["name"] for entry in payload["providers_not_yet_implemented"]}
@@ -261,6 +265,29 @@ def test_the_declared_versus_implemented_gap_is_stated(tools):
     )
     for entry in payload["providers_not_yet_implemented"]:
         assert "not yet implemented" in entry["status"], entry
+
+
+def test_the_shipped_server_has_no_unimplemented_providers(config):
+    """Task 4.8 closed the gap, and this is what keeps it closed.
+
+    The test above runs against a cut-down dispatcher, so it would keep
+    passing however many adapters were added or removed. This one builds the
+    real context: a provider declared in the catalogue without an adapter
+    wired into it fails here.
+    """
+    from qgis_mcp_server.context import ServerContext
+    from qgis_mcp_server.providers.catalogue import ALL_PROVIDERS
+
+    with ServerContext(config) as context:
+        wired = {adapter.name for adapter in context.providers.adapters}
+
+    declared = {provider.name for provider in ALL_PROVIDERS}
+    assert declared - wired == set(), (
+        f"declared but not wired into the dispatcher: {sorted(declared - wired)}"
+    )
+    assert wired - declared == set(), (
+        f"wired but not declared in the catalogue: {sorted(wired - declared)}"
+    )
 
 
 # ---------------------------------------------------------------------------

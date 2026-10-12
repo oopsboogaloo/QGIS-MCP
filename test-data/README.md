@@ -220,12 +220,34 @@ ordinary `Integer64` field. Neither is wrong, so `truth.py` records both views �
 sees. A test that assumed they agreed would fail for a reason that looks like a
 fixture fault.
 
-## Still to come
+## Real data, and where it is
 
 Task 0 lists "one small real-world clip (e.g. a known UK grid square) for
 CRS/reprojection tests". The synthetic fixtures sit on real SU4080 coordinates,
 which covers the CRS *selection* tests (tier 1 and tier 2 are deterministic and
-need no real data). A genuinely downloaded clip is deferred to task 4.4, where
-the first provider adapter lands and a recorded real response is committed as a
-fixture anyway — that is the point at which real data starts paying for itself
-rather than being a second thing to keep in step.
+need no real data), and the genuinely downloaded clip arrived with task 4.4:
+`provider-fixtures/opentopography/` holds a recorded COP30 response and the two
+HTTP 400 error bodies, which is where the actual parsing happens. Re-record
+with `record_provider_fixtures.py` (spends 3 API calls).
+
+**The task 4.8 adapters have no recorded fixtures, deliberately.** Their tests
+build the shapes by hand and assert the logic — tiling, de-duplication,
+coordinate order, world files — with one live `integration` test each to
+confirm those shapes are the ones the service actually sends. Three reasons
+this is the better trade here rather than a shortcut:
+
+- **Overpass responses are not stable.** OSM changes continuously, so a
+  recorded response is a snapshot of one afternoon's edits. The parsing is what
+  matters, and hand-made elements exercise it more precisely — a closed way, a
+  relation with no geometry, a node and a way sharing an id.
+- **OS data cannot be committed.** The licence covers using it, not
+  redistributing it in a public repository, and a fixture is redistribution.
+- **BGS capabilities are small and quoted inline**, which keeps the licence
+  terms the test asserts against visible in the test itself.
+
+The real risk this leaves — that a service changes shape and the unit tests
+keep passing — is what the integration tests exist for. Run them deliberately:
+
+```sh
+uv run pytest -m integration
+```

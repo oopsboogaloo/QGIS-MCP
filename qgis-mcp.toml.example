@@ -19,6 +19,18 @@
 # over large rasters; a legitimate run can take minutes.
 # timeout = 300
 
+[live]
+# The listener plugin running inside QGIS (task 6). The plugin's own port lives
+# in QGIS under Settings -> Options -> Advanced, key qgis_mcp/port; this is the
+# server's side of the same number, and the two must agree.
+#
+# The default is 9878 and deliberately not 9876, which is BlenderMCP's -- and
+# this project exports heightmaps for Blender, so the two run together.
+# port = 9878
+#
+# Set false to keep the server headless even when QGIS is open.
+# enabled = true
+
 [credentials]
 # Free registration, both of them. `qgis-mcp --check` reports which are set,
 # and `check_api_credentials` reports it to the agent -- neither ever prints
@@ -26,7 +38,10 @@
 #
 # Ordnance Survey Data Hub -- https://osdatahub.os.uk/
 #   Sign up, then API Dashboard -> My Projects -> Create a new project ->
-#   Add an API to this project. Enable at least OS Names and OS Features.
+#   Add an API to this project. Enable "OS NGD API - Features", which is what
+#   the adapter calls -- not the older "OS Features API", a different product.
+#   Keys are per project AND per API, which is the usual reason a key that
+#   looks fine returns 401.
 # os_data_hub = ""
 #
 # OpenTopography -- https://portal.opentopography.org/newUser

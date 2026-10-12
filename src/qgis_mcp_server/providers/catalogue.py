@@ -40,10 +40,13 @@ OS_DATA_HUB_CREDENTIAL = CredentialSpec(
     registration_url="https://osdatahub.os.uk/",
     notes=(
         "Sign up, then API Dashboard -> My Projects -> Create a new project -> "
-        "Add an API to this project. The key is per project. Enable at least "
-        "OS Names (UK place lookup) and OS Features (buildings and streets); "
-        "add OS Maps for raster basemap tiles. Free allowance covers a set "
-        "monthly value of premium transactions; OS OpenData products are OGL."
+        "Add an API to this project. The key is per project AND per API, which "
+        "is the usual reason a valid-looking key returns 401. Enable 'OS NGD "
+        "API - Features', which is what this adapter calls -- not the older "
+        "'OS Features API', which is a different product. Add OS Names for "
+        "place lookup and OS Maps for raster basemap tiles if wanted. Free "
+        "allowance covers a set monthly value of premium transactions; OS "
+        "OpenData products are OGL."
     ),
 )
 

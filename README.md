@@ -126,7 +126,7 @@ it (`spec/design.md` §6.3).
 
 | Provider | Register | Then |
 |---|---|---|
-| OS Data Hub | [osdatahub.os.uk](https://osdatahub.os.uk/) | API Dashboard → My Projects → Create a new project → Add an API to this project. Enable at least **OS Names** and **OS Features** |
+| OS Data Hub | [osdatahub.os.uk](https://osdatahub.os.uk/) | API Dashboard → My Projects → Create a new project → Add an API to this project. Enable **OS NGD API – Features**, which is what the adapter uses — *not* the older **OS Features API**, which is a different product and will answer 401 |
 | OpenTopography | [portal.opentopography.org](https://portal.opentopography.org/newUser) | MyOpenTopo Dashboard → Get an API Key → Request API key |
 
 Copy [`qgis-mcp.toml.example`](qgis-mcp.toml.example) to `qgis-mcp.toml` and
@@ -264,10 +264,20 @@ renders 1.28 km × 1 km. A texture UV-mapped to the requested box would be out
 by 140 m per side, with nothing in the image to show it. Passing `pixel_size`
 instead of `width`+`height` avoids the expansion entirely.
 
-What is *not* there yet: four of the five declared providers have no adapter, so
-only global elevation is actually fetchable. `search_data_sources` names the gap
-in `providers_not_yet_implemented` rather than letting it look like those
-providers had nothing to offer.
+All five declared providers now have adapters (task 4.8), so a UK search returns
+a real menu rather than one elevation entry:
+
+| Provider | Serves | Notes |
+|---|---|---|
+| **OS Data Hub** | roads, buildings, water, land, named points | OGC API Features with true server-side bbox filtering. Collection versions are discovered, not pinned. Each page is a chargeable transaction, so paging is capped and a truncated fetch says so |
+| **OpenTopography** | elevation | Global DEMs; 50 calls per 24 hours on the free tier |
+| **OpenStreetMap** | roads, buildings, water, land use, places | Tiles large AOIs and merges with de-duplication. Refuses continental AOIs rather than issuing hundreds of queries at a free shared service |
+| **BGS** | geology | 1:625k DiGMap as georeferenced images. WMS, so it can be displayed but not queried by attribute |
+| **Natural Earth** | boundaries, coastline, water, roads, places | Whole-world files with no bbox filtering, so `clip_to_aoi` is a dependency rather than a convenience. Warns when the AOI is too small for even its most detailed scale |
+
+Ranking is explicit rather than incidental: OS leads inside the UK, Natural
+Earth is last everywhere, because it answers for every AOI on Earth and would
+otherwise win by being listed.
 
 ## Looking up the API
 
@@ -315,8 +325,16 @@ bodies, which are where the actual parsing happens. Re-record with
 `test-data/record_provider_fixtures.py` (spends 3 API calls).
 
 **Integration tests are excluded from the default pass**, and that is not a
-preference: they spend OpenTopography calls against an allowance of 50 per
-24 hours, so a plain `pytest` must not touch them. Run them deliberately:
+preference. There are six, one per live service, and between them they spend
+OpenTopography calls against an allowance of 50 per 24 hours and OS Data Hub
+transactions against a paid monthly allowance — so a plain `pytest` must not
+touch them. The other three (Overpass, Natural Earth, BGS) are free, but they
+are someone else's shared infrastructure and the tests are deliberately tiny:
+a few streets, the 85 KB coastline, a 256-pixel image.
+
+They exist because the unit tests assert against shapes built by hand, and only
+a real call proves those are the shapes the service sends. Run them
+deliberately:
 
 ```sh
 uv run pytest -m integration
