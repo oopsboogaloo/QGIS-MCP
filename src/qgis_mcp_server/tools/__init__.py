@@ -11,10 +11,17 @@ from qgis_mcp_server.tools import (
     introspection,
     processing_algorithms,
     raw_execution,
+    terrain,
 )
 
 #: Registered in order. Each module exposes ``register(server, context)``.
-MODULES = (raw_execution, introspection, processing_algorithms, acquisition)
+MODULES = (
+    raw_execution,
+    introspection,
+    processing_algorithms,
+    acquisition,
+    terrain,
+)
 
 
 def register_all(server, context) -> None:

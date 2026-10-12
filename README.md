@@ -33,6 +33,9 @@ Implemented so far:
 - **Task 4.5** — `search_data_sources`
 - **Task 4.6** — `get_dataset_licence_info`, `check_api_credentials`
 - **Task 4.7** — `download_and_register_layer`
+- **Task 5.1** — `fetch_elevation_data`
+- **Task 5.2** — `export_heightmap`
+- **Task 5.4** — `model_sea_level_change`
 
 ## Spec deltas
 
@@ -147,6 +150,25 @@ The acquisition path is complete end to end. A typical sequence:
    CRS keeping the original on disk (REQ-12), and registers the layer with its
    vertical datum and provenance (REQ-13).
 5. **`clip_to_aoi`** to trim to the exact area, by bbox or boundary polygon.
+
+Or, for elevation, **`fetch_elevation_data`** does steps 2–5 in one call (with
+the same confirmation gate), and **`export_heightmap`** turns the result into a
+16-bit displacement map with the numbers Blender needs:
+
+```
+bits_per_channel         16
+source_elevation_min_m   87.18      <- the real range 0..65535 maps to
+source_elevation_max_m   126.01
+extent_width_m           989.21     <- the ground it covers
+extent_height_m          1059.87
+aspect_ratio             0.933
+displacement_ratio       0.0393     <- strength for a 1-unit-wide plane
+nodata_cells             0
+```
+
+Set the plane's X size to 1, its Y size to 1/`aspect_ratio`, and the
+displacement strength to `displacement_ratio`. Without those numbers the
+vertical exaggeration is guesswork and differs between exports.
 
 What is *not* there yet: four of the five declared providers have no adapter, so
 only global elevation is actually fetchable. `search_data_sources` names the gap

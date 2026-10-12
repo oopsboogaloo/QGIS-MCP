@@ -29,3 +29,6 @@ qgis-mcp.toml
 # Runtime output
 *.log
 backups/
+
+# Demo output from a terrain run. Regenerable; not part of the project.
+terrain-demo/

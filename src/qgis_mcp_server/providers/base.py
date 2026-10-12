@@ -193,6 +193,13 @@ class Dataset:
     estimated_size_bytes: int | None = None
     format: str | None = None
     attribution: str = ""
+    #: Tie-break among datasets of equal resolution, lower first.
+    #:
+    #: First-class rather than buried in ``extra`` because the dispatcher sorts
+    #: on it: the leading entry in a menu is what gets taken, and an adapter
+    #: that has a reason to rank one product over another of the same
+    #: resolution needs that reason to survive the merge across providers.
+    preference: int = 1
     extra: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:

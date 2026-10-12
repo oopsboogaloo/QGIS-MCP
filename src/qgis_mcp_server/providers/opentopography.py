@@ -317,7 +317,7 @@ class OpenTopographyAdapter(RestApiAdapter):
         datasets.sort(
             key=lambda dataset: (
                 dataset.resolution_m or 0,
-                dataset.extra.get("preference", 1),
+                dataset.preference,
                 dataset.identifier,
             )
         )
@@ -377,6 +377,7 @@ class OpenTopographyAdapter(RestApiAdapter):
             estimated_size_bytes=self._estimate_size(dem, aoi),
             format=self.output_format,
             attribution=OPENTOPOGRAPHY_LICENCE.attribution,
+            preference=dem.preference,
             extra={
                 # REQ-13: recorded at acquisition so a later comparison or a
                 # sea-level run can warn on a mismatch.

@@ -130,7 +130,23 @@ class SearchOutcome:
         for dataset in self.datasets:
             groups.setdefault(dataset.data_type, []).append(dataset)
         for datasets in groups.values():
-            datasets.sort(key=lambda item: (item.provider, item.identifier))
+            # Finest resolution first, then the adapter's own preference, then
+            # provider and identifier for determinism.
+            #
+            # Sorting on provider and identifier alone was a bug: it is
+            # reproducible and meaningless, and it discarded the ranking the
+            # adapter had already established. For elevation that put AW3D30
+            # ahead of COP30 on the alphabet, and would have put an ellipsoidal
+            # product ahead of an orthometric one -- which is a 50 m error for
+            # anyone who took the first entry.
+            datasets.sort(
+                key=lambda item: (
+                    item.resolution_m if item.resolution_m is not None else float("inf"),
+                    item.preference,
+                    item.provider,
+                    item.identifier,
+                )
+            )
         return groups
 
     def to_dict(self) -> dict[str, Any]:

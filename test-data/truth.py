@@ -208,6 +208,20 @@ OCEAN_CONNECTED_FLOODED_AREA_M2 = OCEAN_CONNECTED_FLOODED_CELLS * CELL_AREA_M2
 #: this catches an implementation that ignores `connectivity` outright.
 CONNECTIVITY_DIFFERENCE_CELLS = BASIN_CELL_COUNT               # 25
 
+#: Land cells at the threshold: every valid cell that is not flooded.
+BATHTUB_LAND_CELLS = VALID_CELL_COUNT - BATHTUB_FLOODED_CELLS          # 2416
+OCEAN_CONNECTED_LAND_CELLS = VALID_CELL_COUNT - OCEAN_CONNECTED_FLOODED_CELLS
+
+#: Polygonising the water mask. The two below-sea-level regions do not touch,
+#: so bathtub yields one polygon each for the coastal inlet and the basin;
+#: ocean-connected yields only the inlet.
+#:
+#: The polygon *count* is the assertion that distinguishes the two modes
+#: structurally rather than only by area -- an implementation that flooded the
+#: right number of cells in the wrong places could still match on area.
+BATHTUB_WATER_POLYGON_COUNT = 2
+OCEAN_CONNECTED_WATER_POLYGON_COUNT = 1
+
 #: Lowest land elevation in the ring enclosing the basin, at its north-west
 #: diagonal neighbour -- row 29 / col 29:
 #:     100.0 + 2.0 * 29 + 1.0 * 29 = 187.0

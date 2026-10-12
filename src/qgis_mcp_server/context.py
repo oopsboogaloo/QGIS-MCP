@@ -22,6 +22,7 @@ from qgis_mcp_server.geocoding import (
 from qgis_mcp_server.processing import ProcessingRunner
 from qgis_mcp_server.providers.dispatcher import ProviderDispatcher
 from qgis_mcp_server.providers.opentopography import OpenTopographyAdapter
+from qgis_mcp_server.terrain import TerrainRunner
 
 
 @dataclass
@@ -46,6 +47,8 @@ class ServerContext:
     providers: ProviderDispatcher = field(init=False)
     #: Download, reproject and register (task 4.7).
     acquisition: AcquisitionRunner = field(init=False)
+    #: Heightmap export and sea-level modelling (task 5).
+    terrain: TerrainRunner = field(init=False)
 
     def __post_init__(self) -> None:
         self.headless = HeadlessRunner(self.config)
@@ -61,6 +64,7 @@ class ServerContext:
         self.providers = ProviderDispatcher(
             adapters=(OpenTopographyAdapter(self.credentials),)
         )
+        self.terrain = TerrainRunner(headless=self.headless)
         self.acquisition = AcquisitionRunner(
             config=self.config,
             processing=self.processing,

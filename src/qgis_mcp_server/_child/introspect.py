@@ -138,9 +138,35 @@ def _describe_layer(layer, *, detailed: bool) -> dict:
 
     if detailed:
         entry["renderer_type"] = _try(lambda: layer.renderer().type())
+        # Provenance written by task 4.7's registration step. Surfaced here so
+        # REQ-13's vertical datum is readable through the ordinary
+        # introspection tool rather than only by whoever wrote it -- which is
+        # what lets model_sea_level_change be told the datum at all.
+        provenance = _provenance(layer)
+        if provenance:
+            entry["acquisition_provenance"] = provenance
+            if "vertical_datum" in provenance:
+                entry["vertical_datum"] = provenance["vertical_datum"]
         if not layer.isValid():
             entry["invalid_reason"] = _invalid_reason(entry["source_path"])
     return entry
+
+
+#: Prefix task 4.7's registration writes its provenance under.
+PROVENANCE_PREFIX = "qgis_mcp/"
+
+
+def _provenance(layer) -> dict:
+    """Acquisition provenance recorded on a layer, if any."""
+    keys = _try(lambda: layer.customPropertyKeys(), []) or []
+    recorded = {}
+    for key in keys:
+        if not str(key).startswith(PROVENANCE_PREFIX):
+            continue
+        value = _try(lambda: layer.customProperty(key))
+        if value is not None:
+            recorded[str(key)[len(PROVENANCE_PREFIX):]] = value
+    return recorded
 
 
 def _invalid_reason(source_path: str) -> str:

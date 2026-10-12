@@ -55,6 +55,13 @@ REGISTER_SCRIPT = "register.py"
 RESAMPLING_BILINEAR = 1
 RESAMPLING_NEAREST = 0
 
+#: Nodata value stamped on a reprojected raster.
+#:
+#: Far below any real terrestrial elevation (the Dead Sea shore is about
+#: -430 m), so it cannot be mistaken for data, and it matches the sentinel
+#: the synthetic fixtures use.
+NODATA_SENTINEL = -9999.0
+
 
 @dataclass
 class AcquisitionPlan:
@@ -395,6 +402,15 @@ class AcquisitionRunner:
                     "SOURCE_CRS": plan.dataset.crs,
                     "TARGET_CRS": plan.target_crs,
                     "RESAMPLING": resampling,
+                    # Reprojecting a lat/lon box into a projected CRS leaves
+                    # the corners of the output rectangle uncovered, and
+                    # without an explicit nodata GDAL fills them with 0 --
+                    # which for a DEM is indistinguishable from real elevation
+                    # at sea level. It then enters the elevation range, pulls
+                    # the minimum to 0, and distorts the displacement ratio
+                    # REQ-11 derives from it. Declaring a sentinel keeps the
+                    # fill out of every later statistic.
+                    "NODATA": NODATA_SENTINEL,
                     "OUTPUT": str(plan.reprojected_path),
                 },
                 # The destination is ours, derived from the AOI hash, and the
@@ -420,6 +436,7 @@ class AcquisitionRunner:
                     "resampling": (
                         "bilinear" if resampling == RESAMPLING_BILINEAR else str(resampling)
                     ),
+                    "nodata": NODATA_SENTINEL,
                     "path": str(plan.reprojected_path),
                     "original_retained": str(plan.original_path),
                 }
@@ -527,6 +544,7 @@ def _human_size(size: int | None) -> str | None:
 
 
 __all__ = [
+    "NODATA_SENTINEL",
     "RESAMPLING_BILINEAR",
     "RESAMPLING_NEAREST",
     "REGISTER_SCRIPT",
