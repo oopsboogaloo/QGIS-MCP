@@ -847,6 +847,62 @@ def test_the_plugin_declares_a_maximum_qgis_version():
     assert "qgisMinimumVersion=4" in metadata, metadata
 
 
+def test_the_plugin_finds_the_protocol_package_without_the_repo_on_sys_path():
+    """The plugin must bootstrap its own import path.
+
+    This was a real failure, and an invisible one: the suite passes because
+    ``live_harness.py`` inserts the repo's ``src`` on ``sys.path`` itself, and
+    the headless children get it via ``child_env``. A GUI QGIS does neither --
+    it adds the profile's plugin directory and nothing else -- so the plugin
+    imported ``qgis_mcp_protocol`` successfully in every automated context and
+    would have raised ImportError the moment anyone enabled it.
+
+    So this asserts the condition QGIS actually imposes: the package is found
+    with the repo absent from ``sys.path``.
+    """
+    repo = Path(__file__).resolve().parent.parent
+    probe = (
+        "import sys\n"
+        # Strip the repo, exactly as a QGIS process would never have had it.
+        f"sys.path = [p for p in sys.path if {str(repo)!r}.lower() not in p.lower()]\n"
+        f"sys.path.insert(0, {str(repo)!r})\n"
+        "import importlib.util\n"
+        "assert importlib.util.find_spec('qgis_mcp_protocol') is None, 'repo not stripped'\n"
+        "import qgis_mcp_plugin\n"
+        "from qgis_mcp_protocol.socket_frame import DEFAULT_PORT\n"
+        "print(qgis_mcp_plugin.PROTOCOL_SOURCE)\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-I", "-c", probe],
+        capture_output=True,
+        text=True,
+        cwd=str(repo),
+    )
+    assert result.returncode == 0, (
+        "the plugin could not import the shared protocol package without the "
+        f"repo on sys.path, which is the condition a GUI QGIS imposes:\n"
+        f"{result.stderr}"
+    )
+    assert result.stdout.strip(), "the bootstrap did not report where it looked"
+
+
+def test_the_bootstrap_failure_says_where_it_looked():
+    """A plugin that will not load should not say only "No module named ...".
+
+    The Plugin Manager shows the exception and little else, so the message is
+    the entire diagnosis the user gets.
+    """
+    import importlib
+
+    bootstrap = importlib.import_module("qgis_mcp_plugin._bootstrap")
+    roots = bootstrap._candidate_roots(
+        Path(__file__).resolve().parent.parent / "qgis_mcp_plugin"
+    )
+    described = [description for _path, description in roots]
+    assert any("vendored" in text for text in described), described
+    assert any("repo checkout" in text for text in described), described
+
+
 def test_the_plugin_imports_through_the_qgis_pyqt_shim():
     """design.md §6.2: never PyQt5 or PyQt6 directly.
 

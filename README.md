@@ -153,23 +153,44 @@ listener plugin running inside QGIS.
 
 ## The live listener plugin
 
-`qgis_mcp_plugin/` is a QGIS plugin. Copy or symlink it into your profile's
-plugin directory, then enable it in **Plugins → Manage and Install Plugins**:
+`qgis_mcp_plugin/` is a QGIS plugin. Install it with:
 
+```sh
+uv run python install_plugin.py            # link this checkout into the profile
+uv run python install_plugin.py --list     # show profiles and what is installed
+uv run python install_plugin.py --copy     # self-contained copy, to hand to someone
+uv run python install_plugin.py --uninstall
 ```
-%APPDATA%\QGIS\QGIS4\profiles\default\python\plugins\qgis_mcp_plugin   (Windows)
-~/.local/share/QGIS/QGIS4/profiles/default/python/plugins/qgis_mcp_plugin  (Linux)
-```
 
-Note `QGIS4`, not `QGIS3`. QGIS 4 keeps an entirely separate profile tree from
-3.x, so settings, plugins and saved connections do not carry across — and a
-plugin dropped into the `QGIS3` path will simply never appear. The `plugins`
-directory does not exist until something creates it.
+Then in QGIS: **Plugins → Manage and Install Plugins → Installed**, tick
+*QGIS MCP*, and start it from **Plugins → QGIS MCP → Start MCP listener**.
+QGIS scans the plugin directory at startup, so restart it if it was already
+running.
 
-Start it from **Plugins → QGIS MCP → Start MCP listener**. Port and autostart
-live in `QSettings` under `qgis_mcp/port` and `qgis_mcp/autostart`; the server
-side is `live.port` in `qgis-mcp.toml` or `QGIS_MCP_LIVE_PORT`. Set
-`live.enabled = false` (or `QGIS_MCP_LIVE_ENABLED=0`) to keep the server
+The default is a link (a directory junction on Windows, which needs no
+administrator rights), so an edit to this checkout takes effect on the next
+QGIS start with nothing to re-copy and no second copy to drift.
+
+There is a script rather than a documented path for two reasons, both of which
+produce a plugin that looks broken rather than mis-installed:
+
+- **The profile tree is `QGIS4`, not `QGIS3`.** QGIS 4 shares nothing with 3.x
+  — settings, plugins and saved connections do not carry across — and a plugin
+  placed in the 3.x path simply never appears in the Plugin Manager.
+- **The plugin needs `qgis_mcp_protocol`, which lives in `src/`.** It shares
+  the envelope and framing contract with the server rather than restating it
+  (`design.md` §2.3). The server imports it from its virtualenv and headless
+  children get it staged onto `PYTHONPATH`, but a GUI QGIS adds only the
+  profile's plugin directory to `sys.path`. So the plugin locates the package
+  itself — through the link to this checkout, or from the `_vendor/` copy that
+  `--copy` writes — and reports where it found it. See
+  [`qgis_mcp_plugin/_bootstrap.py`](qgis_mcp_plugin/_bootstrap.py).
+
+Port and autostart live in `QSettings` under `qgis_mcp/port` and
+`qgis_mcp/autostart`; the server side is `live.port` in `qgis-mcp.toml` or
+`QGIS_MCP_LIVE_PORT`.
+
+Set `live.enabled = false` (or `QGIS_MCP_LIVE_ENABLED=0`) to keep the server
 headless even with QGIS open.
 
 Three things about it are deliberate rather than incidental:

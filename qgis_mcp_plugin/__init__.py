@@ -7,6 +7,16 @@ touching them from the socket thread segfaults QGIS rather than raising.
 """
 
 
+from ._bootstrap import ensure_protocol_importable
+
+#: Where the shared protocol package was found, for the plugin's load log.
+#:
+#: Run at import rather than inside ``classFactory`` so the failure arrives
+#: while QGIS is still reporting plugin load errors, and names the directories
+#: it searched instead of surfacing as a bare ImportError from a submodule.
+PROTOCOL_SOURCE = ensure_protocol_importable()
+
+
 def classFactory(iface):  # noqa: N802 - the name QGIS looks for
     """Entry point QGIS calls to instantiate the plugin.
 

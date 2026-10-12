@@ -16,6 +16,12 @@ repository=https://github.com/oopsboogaloo/QGIS-MCP
 homepage=https://github.com/oopsboogaloo/QGIS-MCP
 category=Plugins
 icon=
-experimental=True
+; False despite this being a 0.1.0 build, deliberately. The flag's purpose is
+; to gate a plugin published to plugins.qgis.org, and this one is installed
+; locally by install_plugin.py and never published. Its only effect here is to
+; risk the Plugin Manager hiding the entry unless "Show also experimental
+; plugins" is ticked -- which makes a working install look like a failed one.
+; The maturity signal belongs in the version number and the description.
+experimental=False
 deprecated=False
 tags=mcp,automation,scripting
