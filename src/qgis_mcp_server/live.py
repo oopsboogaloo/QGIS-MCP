@@ -27,6 +27,7 @@ from typing import Any
 
 from qgis_mcp_protocol import Envelope, ErrorCode, ExecutionMode, error
 from qgis_mcp_protocol.socket_frame import (
+    MAX_RESPONSE_FRAME_BYTES,
     BIND_HOST,
     DEFAULT_PORT,
     FrameError,
@@ -187,7 +188,9 @@ class LiveClient:
             with socket.create_connection((self.host, self.port), timeout) as sock:
                 sock.settimeout(timeout)
                 sock.sendall(encode_request(Request(command=command, params=params)))
-                reader = LineReader(sock)
+                # The response limit, not the request one: a screenshot is
+                # legitimately larger than anything a client ever sends.
+                reader = LineReader(sock, max_frame=MAX_RESPONSE_FRAME_BYTES)
                 line = reader.read_line()
         except (OSError, socket.timeout) as exc:
             return self._unavailable(f"could not reach the live session: {exc}")

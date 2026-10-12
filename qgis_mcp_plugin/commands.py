@@ -23,6 +23,8 @@ from typing import Any, Callable
 from qgis.core import Qgis, QgsProject, QgsRectangle
 from qgis.PyQt.QtCore import QBuffer, QByteArray, QIODevice
 
+from qgis_mcp_protocol.socket_frame import max_binary_payload
+
 from .backups import DEFAULT_RETENTION, BackupError, list_backups, take_backup
 from .errors import CodeRaised, CommandError, InterfaceUnavailable
 
@@ -35,6 +37,43 @@ DEFAULT_SCREENSHOT_BYTE_CAP = 900_000
 
 #: Smallest width the screenshot downscaler will settle for before giving up.
 MIN_SCREENSHOT_WIDTH = 320
+
+
+def _effective_byte_cap(requested: Any) -> tuple[int, dict[str, Any]]:
+    """Resolve a requested screenshot cap against what a frame can carry.
+
+    REQ-5 makes the cap configurable, and a caller raising it for a detailed
+    map is doing a reasonable thing. What is not reasonable is honouring a cap
+    the transport cannot deliver: the PNG is capped in bytes, but what crosses
+    the socket is base64 of it, a third larger again. Ask for more than the
+    frame allows and the receiver hits its limit part-way through, raises, and
+    drops the connection -- so "this map was too detailed" arrives looking like
+    the live session died.
+
+    Clamped and reported rather than refused. The caller wanted a picture; a
+    slightly smaller one is a better answer than an error, provided they are
+    told it happened.
+    """
+    ceiling = max_binary_payload()
+    cap = int(requested or DEFAULT_SCREENSHOT_BYTE_CAP)
+    if cap < 10_000:
+        raise CommandError(
+            f"byte_cap of {cap} is too small for a usable PNG; the minimum is "
+            f"10000."
+        )
+    if cap <= ceiling:
+        return cap, {"byte_cap": cap}
+    return ceiling, {
+        "byte_cap": ceiling,
+        "byte_cap_requested": cap,
+        "byte_cap_clamped": True,
+        "byte_cap_reason": (
+            f"a {cap} byte PNG becomes about {cap * 4 // 3} bytes of base64 on "
+            f"the wire, which exceeds what one frame can carry; capped at "
+            f"{ceiling}"
+        ),
+    }
+
 
 #: REQ-3's return convention, shared with the headless runner.
 RESULT_NAME = "result"
@@ -419,12 +458,7 @@ def get_screenshot_of_canvas(params: dict[str, Any]) -> dict[str, Any]:
     rather than substituting a render.
     """
     canvas = _iface().mapCanvas()
-    cap = int(params.get("byte_cap") or DEFAULT_SCREENSHOT_BYTE_CAP)
-    if cap < 10_000:
-        raise CommandError(
-            f"byte_cap of {cap} is too small for a usable PNG; the minimum is "
-            f"10000."
-        )
+    cap, cap_meta = _effective_byte_cap(params.get("byte_cap"))
 
     render = _settle_canvas(canvas)
     pixmap = canvas.grab()
@@ -435,6 +469,7 @@ def get_screenshot_of_canvas(params: dict[str, Any]) -> dict[str, Any]:
         "image_base64": base64.b64encode(data).decode("ascii"),
         **meta,
         **render,
+        **cap_meta,
         "extent": [
             extent.xMinimum(),
             extent.yMinimum(),
@@ -450,7 +485,7 @@ def get_screenshot_of_window(params: dict[str, Any]) -> dict[str, Any]:
     """Grab the whole QGIS window, for layout and dialog state."""
     interface = _iface()
     window = interface.mainWindow()
-    cap = int(params.get("byte_cap") or DEFAULT_SCREENSHOT_BYTE_CAP)
+    cap, cap_meta = _effective_byte_cap(params.get("byte_cap"))
     # The window contains the canvas, so it is stale in the same way and for
     # the same reason -- see _settle_canvas.
     render = _settle_canvas(interface.mapCanvas())
@@ -461,6 +496,7 @@ def get_screenshot_of_window(params: dict[str, Any]) -> dict[str, Any]:
         "image_base64": base64.b64encode(data).decode("ascii"),
         **meta,
         **render,
+        **cap_meta,
         "window_title": window.windowTitle(),
     }
 

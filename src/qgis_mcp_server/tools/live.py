@@ -61,6 +61,15 @@ protected and is not reversible.
 
 Work runs on the QGIS main thread, so a long operation freezes the user's
 interface for its duration.
+
+PYQGIS CAN CRASH QGIS OUTRIGHT, and the usual cause is object ownership rather
+than anything that looks dangerous. Getters like layer.renderer(), .labeling()
+or .symbol() return objects QGIS still owns; the matching setters take
+ownership and delete what was there. Handing a getter's result straight back —
+`layer.setRenderer(layer.renderer())` — frees the object and then uses it. That
+is a segfault, not an exception: the session dies, this tool returns nothing,
+and the backup is the only thing left. Call .clone() first and modify the
+clone, or construct a new object outright.
 """
 
 _CANVAS_DESCRIPTION = """\

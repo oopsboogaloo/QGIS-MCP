@@ -43,6 +43,38 @@ FRAME_TERMINATOR = b"\n"
 #: should not be the thing that exhausts QGIS's memory.
 MAX_FRAME_BYTES = 1_048_576
 
+#: The same limit for a *response*, which is a different problem.
+#:
+#: The limit above defends QGIS against a hostile or broken client. A response
+#: travels the other way, is produced by this project's own code, and has one
+#: legitimately large member: a screenshot. Holding responses to the request
+#: limit would cap a canvas capture at well under a megabyte for no reason
+#: other than symmetry with a rule written for a different threat.
+MAX_RESPONSE_FRAME_BYTES = 16_777_216
+
+#: Room for everything in a response that is not the binary payload --- the
+#: extent, scale, meta, mode, and JSON punctuation. Generous; the cost of
+#: over-reserving is a slightly smaller image, and the cost of under-reserving
+#: is a frame nobody can read.
+FRAME_OVERHEAD_BYTES = 16_384
+
+
+def max_binary_payload(frame_limit: int = MAX_RESPONSE_FRAME_BYTES) -> int:
+    """Largest binary blob that still fits in one frame once encoded.
+
+    Base64 is why this function exists. A screenshot is capped in *PNG* bytes,
+    but what crosses the socket is base64 of that PNG --- four characters for
+    every three bytes. A cap applied to the wrong one of those is a cap that
+    does not hold: the default 900 KB screenshot limit expands to roughly
+    1.2 MB on the wire, which a one-megabyte reader refuses.
+
+    The symptom is worth spelling out, because it is not "the image was too
+    big". The receiver hits its limit mid-frame, raises, and closes the
+    connection --- so a capture that was merely too detailed looks like the
+    live session dying.
+    """
+    return ((frame_limit - FRAME_OVERHEAD_BYTES) * 3) // 4
+
 #: Default port for the listener. Registered nowhere, high and unprivileged.
 #:
 #: **Not 9876, deliberately.** That is BlenderMCP's default, and this project
@@ -275,7 +307,10 @@ __all__ = [
     "BIND_HOST",
     "DEFAULT_PORT",
     "FRAME_TERMINATOR",
+    "FRAME_OVERHEAD_BYTES",
     "MAX_FRAME_BYTES",
+    "MAX_RESPONSE_FRAME_BYTES",
+    "max_binary_payload",
     "PortUnavailable",
     "claim_port",
     "FrameError",

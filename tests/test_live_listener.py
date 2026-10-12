@@ -442,6 +442,41 @@ def test_claim_port_closes_the_socket_it_could_not_bind():
     reclaimed.close()
 
 
+def test_the_screenshot_cap_cannot_exceed_what_a_frame_carries():
+    """A cap counted in the wrong units is a cap that does not hold.
+
+    REQ-5 caps a screenshot in PNG bytes, but what crosses the socket is base64
+    of that PNG -- four characters per three bytes. The default 900 KB cap
+    therefore produces about 1.2 MB on the wire, which a one-megabyte reader
+    refuses *mid-frame*: it raises and drops the connection, so "this map was
+    too detailed" arrives looking like the live session dying.
+
+    Found by capturing a real map of a real town at a raised cap.
+    """
+    from qgis_mcp_protocol.socket_frame import (
+        MAX_RESPONSE_FRAME_BYTES,
+        max_binary_payload,
+    )
+
+    ceiling = max_binary_payload()
+
+    # The whole point: encoded, it still fits, with the rest of the envelope.
+    encoded = (ceiling + 2) // 3 * 4
+    assert encoded < MAX_RESPONSE_FRAME_BYTES, (
+        f"{ceiling} bytes becomes {encoded} encoded, which does not fit in "
+        f"{MAX_RESPONSE_FRAME_BYTES}"
+    )
+
+    # And the default screenshot cap must itself be deliverable, which is the
+    # case that was broken: 900_000 * 4/3 exceeds the request frame limit.
+    assert 900_000 * 4 // 3 > MAX_FRAME_BYTES, (
+        "this test is pointless if the default cap fits the request limit"
+    )
+    assert 900_000 <= ceiling, (
+        "the default screenshot cap no longer fits one response frame"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Commands
 # ---------------------------------------------------------------------------
@@ -1013,10 +1048,15 @@ def test_live_tools_register_with_their_warnings(config):
         assert name in descriptions, sorted(descriptions)
 
     execute = descriptions["execute_pyqgis_code"]
-    # The three things a caller cannot infer: that it is live-only, that a
-    # backup is taken, and what the backup does not protect.
+    # The four things a caller cannot infer: that it is live-only, that a
+    # backup is taken, what the backup does not protect, and that handing a
+    # getter's object back to its setter segfaults QGIS. The last was learnt
+    # the direct way -- layer.setRenderer(layer.renderer()) killed a live
+    # session mid-task.
     assert "LIVE ONLY" in execute, execute
     assert "BACKUP IS TAKEN" in execute, execute
+    assert "CAN CRASH QGIS" in execute, execute
+    assert ".clone()" in execute, execute
     # Asserted on a phrase that cannot straddle the wrap, since the warning
     # being *reachable* is the point and its line breaks are incidental.
     assert "does NOT cover: underlying data" in execute, execute
