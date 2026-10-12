@@ -10,6 +10,7 @@ from qgis_mcp_server.tools import (
     acquisition,
     documentation,
     introspection,
+    live,
     processing_algorithms,
     raw_execution,
     rendering,
@@ -25,6 +26,7 @@ MODULES = (
     terrain,
     rendering,
     documentation,
+    live,
 )
 
 

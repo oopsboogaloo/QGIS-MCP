@@ -24,6 +24,8 @@ CONFIG_FILENAME = "qgis-mcp.toml"
 ENV_PROJECT_PATH = "QGIS_MCP_PROJECT"
 ENV_HEADLESS_TIMEOUT = "QGIS_MCP_HEADLESS_TIMEOUT"
 ENV_CACHE_DIR = "QGIS_MCP_CACHE_DIR"
+ENV_LIVE_PORT = "QGIS_MCP_LIVE_PORT"
+ENV_LIVE_ENABLED = "QGIS_MCP_LIVE_ENABLED"
 
 #: Default ceiling on a headless child. Generous because a legitimate
 #: Processing run over a large raster takes minutes (``design.md`` §3.1 makes
@@ -31,6 +33,9 @@ ENV_CACHE_DIR = "QGIS_MCP_CACHE_DIR"
 #: real work is worse than no timeout at all -- it teaches the caller to
 #: distrust the tool rather than the data.
 DEFAULT_HEADLESS_TIMEOUT = 300.0
+
+#: Default port for the live listener, matching the plugin's own default.
+DEFAULT_LIVE_PORT = 9876
 
 
 def default_cache_dir() -> Path:
@@ -71,6 +76,10 @@ class Config:
     #: Where recorded geocoder responses live. Keeping Nominatim usage inside
     #: its policy depends on this being persistent between runs.
     cache_dir: Path = field(default_factory=default_cache_dir)
+    #: Port the QGIS listener plugin is expected on (REQ-1).
+    live_port: int = DEFAULT_LIVE_PORT
+    #: Set false to keep the server headless even with QGIS open.
+    live_enabled: bool = True
 
     _install: QgisInstall | None = None
     _credential_store: CredentialStore | None = None
@@ -129,6 +138,16 @@ class Config:
                 or (file_values.get("geocoding", {}) or {}).get("cache_dir")
                 or default_cache_dir()
             ).expanduser(),
+            live_port=_int_setting(
+                os.environ.get(ENV_LIVE_PORT),
+                (file_values.get("live", {}) or {}).get("port"),
+                DEFAULT_LIVE_PORT,
+            ),
+            live_enabled=_bool_setting(
+                os.environ.get(ENV_LIVE_ENABLED),
+                (file_values.get("live", {}) or {}).get("enabled"),
+                True,
+            ),
         )
 
     @property
@@ -177,6 +196,8 @@ class Config:
             "headless_timeout": self.headless_timeout,
             "project_path": str(self.project_path) if self.project_path else None,
             "cache_dir": str(self.cache_dir),
+            "live_port": self.live_port,
+            "live_enabled": self.live_enabled,
             "warnings": [],
         }
 
@@ -220,6 +241,33 @@ class Config:
             )
 
         return report
+
+
+def _int_setting(*candidates):
+    """First usable integer among the candidates; the last is the default."""
+    default = candidates[-1]
+    for value in candidates[:-1]:
+        if value is None or value == "":
+            continue
+        try:
+            return int(value)
+        except (TypeError, ValueError) as exc:
+            raise ConfigError(
+                f"expected a whole number, got {value!r}"
+            ) from exc
+    return int(default)
+
+
+def _bool_setting(*candidates):
+    """First usable boolean among the candidates; the last is the default."""
+    default = candidates[-1]
+    for value in candidates[:-1]:
+        if value is None or value == "":
+            continue
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() in ("1", "true", "yes", "on")
+    return bool(default)
 
 
 def _read_config_file(config_file: Path | None) -> dict[str, Any]:

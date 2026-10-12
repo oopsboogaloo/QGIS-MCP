@@ -35,6 +35,30 @@ MODE_NAMED_TOOLS: dict[str, str] = {
 }
 
 
+#: Mode-agnostic tools that actually have a live implementation.
+#:
+#: REQ-1b says a mode-agnostic tool should prefer the live session "when one is
+#: reachable". That presumes the tool *can* run live, and most cannot: there is
+#: no live counterpart to ``search_processing_algorithms`` or
+#: ``export_heightmap``, and reporting ``live`` for one of those because a
+#: session happens to be open would be a lie about where the work ran.
+#:
+#: So preference is declared per tool rather than inferred from reachability,
+#: and a tool absent from this set reports headless with that as its reason --
+#: which is a different statement from "no live session was found".
+#:
+#: **Empty, deliberately.** Task 6 gives the live path its mode-*named* tools:
+#: raw execution, the screenshots, the navigation commands. The mode-agnostic
+#: ones -- §4.2's introspection set, Processing, the terrain exports -- still
+#: have only a headless implementation, so none of them belongs here yet.
+#:
+#: Listing one before it has a live path would make its reported reason a lie:
+#: it would say "no live QGIS session is reachable" while a session sat open
+#: and ignored. An empty set says the true thing instead, and each entry gets
+#: added with the live implementation that earns it.
+LIVE_CAPABLE_TOOLS: frozenset[str] = frozenset()
+
+
 @dataclass(frozen=True)
 class ModeDecision:
     """Which path will serve a call, and why.
@@ -52,42 +76,43 @@ class ModeDecision:
         return self.mode == ExecutionMode.LIVE
 
 
-#: Why the live path is never selected yet. Stated once, so the several places
-#: that report it cannot drift into describing it differently.
-_LIVE_NOT_IMPLEMENTED = (
-    "the live listener plugin is not implemented in this build (tasks.md task "
-    "6), so no live session is reachable"
-)
-
-
-def live_is_reachable() -> bool:
-    """Whether a live QGIS session with the listener plugin can be reached.
-
-    Always ``False`` here. Task 6 replaces this with a socket probe; it is a
-    function rather than a constant so that the REQ-1b fallback chain below is
-    already written in its final shape and task 6 changes one body, not every
-    call site.
-    """
-    return False
-
-
-def resolve(tool_name: str) -> ModeDecision:
+def resolve(tool_name, *, live_available=None) -> ModeDecision:
     """Decide which path serves ``tool_name`` (REQ-1b).
 
     Mode-named tools resolve to the mode they name -- availability is the
     caller's problem to report, per REQ-1a, because the error must name the
     missing mode rather than substitute the other one.
 
-    Mode-agnostic tools prefer live when reachable and fall back to headless.
+    Mode-agnostic tools prefer live when they have a live implementation *and*
+    a session is reachable, and fall back to headless otherwise.
+
+    Args:
+        tool_name: The tool being dispatched.
+        live_available: Whether a live session is reachable. Passed in rather
+            than probed here, so a tool that never touches the live path costs
+            no socket connect -- and so this module needs no global state,
+            which would otherwise leak between server instances and between
+            tests.
     """
     named = MODE_NAMED_TOOLS.get(tool_name)
     if named is not None:
         return ModeDecision(named, f"{tool_name} names the {named} mode")
-    if live_is_reachable():
+
+    if tool_name not in LIVE_CAPABLE_TOOLS:
+        return ModeDecision(
+            ExecutionMode.HEADLESS,
+            f"{tool_name} has no live implementation, so it runs headless "
+            f"whether or not a QGIS session is open",
+        )
+    if live_available:
         return ModeDecision(
             ExecutionMode.LIVE, "a live session was reachable and is preferred"
         )
-    return ModeDecision(ExecutionMode.HEADLESS, _LIVE_NOT_IMPLEMENTED)
+    return ModeDecision(
+        ExecutionMode.HEADLESS,
+        "no live QGIS session is reachable, so this ran headless against the "
+        "project file on disk",
+    )
 
 
 def unavailable(tool_name: str, detail: str) -> Envelope:
@@ -111,14 +136,13 @@ def unavailable(tool_name: str, detail: str) -> Envelope:
         ErrorCode.QGIS_NOT_FOUND,
         f"no execution path is available for {tool_name}: {detail}",
         mode=ExecutionMode.HEADLESS,
-        live_unavailable_because=_LIVE_NOT_IMPLEMENTED,
     )
 
 
 __all__ = [
     "MODE_NAMED_TOOLS",
+    "LIVE_CAPABLE_TOOLS",
     "ModeDecision",
-    "live_is_reachable",
     "resolve",
     "unavailable",
 ]

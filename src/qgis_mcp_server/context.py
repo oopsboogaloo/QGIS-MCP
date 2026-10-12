@@ -14,6 +14,7 @@ from qgis_mcp_server.acquisition import AcquisitionRunner
 from qgis_mcp_server.config import Config
 from qgis_mcp_server.credentials import CredentialStore
 from qgis_mcp_server.headless import HeadlessRunner
+from qgis_mcp_server.live import LiveClient
 from qgis_mcp_server.geocoding import (
     NominatimGeocoder,
     PlaceResolver,
@@ -53,6 +54,8 @@ class ServerContext:
     #: PyQGIS API documentation (task 7). Holds the parsed stub index, so
     #: sharing it across the server means parsing once rather than per call.
     docs: DocsRunner = field(init=False)
+    #: The connection to a running QGIS with the listener plugin (REQ-1).
+    live: LiveClient = field(init=False)
 
     def __post_init__(self) -> None:
         self.headless = HeadlessRunner(self.config)
@@ -70,6 +73,9 @@ class ServerContext:
         )
         self.terrain = TerrainRunner(headless=self.headless)
         self.docs = DocsRunner(config=self.config, headless=self.headless)
+        self.live = LiveClient(
+            port=self.config.live_port, enabled=self.config.live_enabled
+        )
         self.acquisition = AcquisitionRunner(
             config=self.config,
             processing=self.processing,

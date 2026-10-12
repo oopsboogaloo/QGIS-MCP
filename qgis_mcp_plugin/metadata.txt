@@ -1,0 +1,21 @@
+[general]
+name=QGIS MCP Listener
+qgisMinimumVersion=4.0
+; REQUIRED, not optional. design.md section 6.2: without qgisMaximumVersion
+; QGIS 4 silently refuses to load the plugin, with no error anywhere obvious --
+; "a confusing first failure to debug". Raise the upper bound deliberately when
+; a new major version has actually been tested, not pre-emptively.
+qgisMaximumVersion=4.99
+description=Exposes a running QGIS session to the qgis-mcp server over a local socket.
+about=Opens a loopback TCP listener so an MCP server can drive this QGIS session: run PyQGIS against the open project, capture the canvas, and control the view. Work is marshalled onto the QGIS main thread, and a project backup is taken before any agent-authored code runs. Loopback only.
+version=0.1.0
+author=qgis-mcp
+email=noreply@example.invalid
+tracker=https://github.com/oopsboogaloo/QGIS-MCP/issues
+repository=https://github.com/oopsboogaloo/QGIS-MCP
+homepage=https://github.com/oopsboogaloo/QGIS-MCP
+category=Plugins
+icon=
+experimental=True
+deprecated=False
+tags=mcp,automation,scripting

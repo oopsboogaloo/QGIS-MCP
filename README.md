@@ -39,7 +39,14 @@ Implemented so far:
 - **Task 5.4** — `model_sea_level_change`
 - **Task 5.5** — `export_vector_layer_for_mesh`
 - **Task 5.6** — `render_map_to_path`
+- **Task 6** — the live listener plugin (`qgis_mcp_plugin/`) and the live path:
+  `get_live_session`, `execute_pyqgis_code`, `get_screenshot_of_canvas`,
+  `get_screenshot_of_window`, `zoom_to_layer`, `set_active_layer`,
+  `toggle_layer_visibility`, `list_project_backups`
 - **Task 7** — `search_pyqgis_docs`, `get_pyqgis_class_docs`
+
+Not started: **task 4.8** (OS Data Hub, Natural Earth, Overpass and BGS
+adapters) and **task 8** (write operations), which the spec defers.
 
 ## Spec deltas
 
@@ -53,6 +60,9 @@ amended.
 | `design.md` §3.2 | Headless falls back to "a generated standalone PyQGIS script" | Templating agent-authored code into a source file breaks on quoting, and reports traceback line numbers against the generated file rather than the submitted snippet | Code crosses the boundary as **JSON data** to a static runner. Same process topology, same fallback role — see `src/qgis_mcp_server/_child/runner.py` |
 | `requirements.md` REQ-4 | Gates "delete a layer, overwrite a project file, or modify features" | A Processing destination pointing at an existing file is none of those literally, but is the same irreversible local change | `run_processing_algorithm` gates an existing destination *and* any `.qgz`/`.qgs` output behind `confirm=true`. An interpretation, not a silent extension — a destination that does not exist yet is never gated |
 | `tasks.md` Task 4.1 | Three geocoders: Nominatim, ONS Open Geography, OS Names | Both UK gazetteers return EPSG:27700 coordinates, and converting them to the 4326 the AOI convention requires needs a PROJ transform — a different shape of adapter from Nominatim's single stdlib GET | Nominatim implemented, and it delivers the whole REQ-9 contract including boundary polygons. The two UK gazetteers are deferred to task 4.7, which already owns transforms; the tiering mechanism is in place so each is an adapter rather than a rework |
+| `design.md` §3.1 | Marshal to the main thread with "`QTimer.singleShot(0, callable)`, **or** a signal connected with `Qt.QueuedConnection`" | The two are not interchangeable from the socket thread. Measured on QGIS 4.2.1 / Qt 6.11: `singleShot` returns without raising, the callable never fires (polled for two seconds), and from that point the **main event loop stops responding at all**. A timer must be started in the thread that will run it, and the socket thread has no event loop | The queued signal, which is the spec's own second option — `MainThreadMarshaller` owns a main-thread `QObject` and a `pyqtSignal` connected `Qt.ConnectionType.QueuedConnection`. The alternative is recorded because the spec presents it first and as an equal |
+| `tasks.md` 6.2 | A main-thread violation "cannot be validated by a test that merely passes" | True of the *consequences*; not of the boundary. A headless `QgsApplication([], False)` is still a `QApplication`, `exec()` runs a real event loop, and a signal from a worker thread dispatches to the thread that called `exec()` exactly as in the GUI | The boundary **is** tested: `tests/live_harness.py` runs the real listener in a headless QGIS and the suite asserts across a socket that handlers execute on the main thread, verified by mutation (bypassing `submit()` fails all three assertions). Only the canvas and window captures still need a GUI, and they assert `mode_unavailable` here |
+| `requirements.md` REQ-1b | A mode-agnostic tool prefers the live session "when one is reachable" | Most mode-agnostic tools have no live implementation — there is no live counterpart to `search_processing_algorithms` or `export_heightmap`, so reporting `live` because a session happens to be open would misstate where the work ran | Preference is declared per tool in `modes.LIVE_CAPABLE_TOOLS`, currently **empty**: task 6 delivers the mode-*named* live tools only. A tool absent from the set reports headless with "no live implementation" as its reason, which is a different statement from "no live session was found". Each entry gets added with the live implementation that earns it |
 | `tasks.md` Task 0 | Fixtures include "one small real-world clip" | Synthetic values on real SU4080 coordinates cover the CRS *selection* tests without a download | Deferred to task 4.4, where a recorded real provider response is committed as a fixture anyway. See `test-data/README.md` |
 
 ## Requirements
@@ -137,6 +147,43 @@ Enterprise key. `check_api_credentials` reports both under
 ```sh
 uv run qgis-mcp
 ```
+
+The headless path works on its own. The live tools additionally need the
+listener plugin running inside QGIS.
+
+## The live listener plugin
+
+`qgis_mcp_plugin/` is a QGIS plugin. Copy or symlink it into your profile's
+plugin directory, then enable it in **Plugins → Manage and Install Plugins**:
+
+```
+%APPDATA%\QGIS\QGIS3\profiles\default\python\plugins\qgis_mcp_plugin   (Windows)
+~/.local/share/QGIS/QGIS3/profiles/default/python/plugins/qgis_mcp_plugin  (Linux)
+```
+
+Start it from **Plugins → QGIS MCP → Start MCP listener**. Port and autostart
+live in `QSettings` under `qgis_mcp/port` and `qgis_mcp/autostart`; the server
+side is `live.port` in `qgis-mcp.toml` or `QGIS_MCP_LIVE_PORT`. Set
+`live.enabled = false` (or `QGIS_MCP_LIVE_ENABLED=0`) to keep the server
+headless even with QGIS open.
+
+Three things about it are deliberate rather than incidental:
+
+- **The socket is loopback-only and not configurable.** It executes arbitrary
+  Python inside your QGIS session, so `BIND_HOST` is pinned to `127.0.0.1` in
+  code. There is no setting to widen it.
+- **One client at a time**, and a second is told why rather than left hanging.
+- **Nothing executes on the socket thread.** Touching PyQGIS off the main
+  thread does not raise, it segfaults, so every command is marshalled across a
+  queued Qt signal and the listener thread only ever reads bytes. `ping`
+  reports the thread it ran on, which is how the test suite proves this.
+
+Before live code execution, a project backup is written and its path returned —
+that is what REQ-4a substitutes for REQ-4's confirmation gate. It covers
+project *structure*: layer references, styling, layouts, CRS, settings. It does
+**not** cover underlying data, so code that overwrites a GeoTIFF or deletes a
+shapefile is not protected and not reversible. Restoring is manual in this
+build (open the `.qgz`); `restore_project_backup` belongs to task 8.
 
 ## A worked acquisition
 
@@ -247,3 +294,22 @@ uv run pytest -m integration
 
 See [`test-data/README.md`](test-data/README.md) for the fixture contents and
 the recorded truth that tests assert against.
+
+### The live listener, and what the suite cannot reach
+
+`tests/test_live_listener.py` runs the **real** listener, marshaller and command
+handlers inside a headless `QgsApplication` (`tests/live_harness.py`) and drives
+them over a real socket. It is still part of the default pass — no GUI, no
+network, no manual step.
+
+Two things are left to a one-off manual check, because they need a desktop QGIS
+and no automated assertion can stand in for them:
+
+- `get_screenshot_of_canvas` and `get_screenshot_of_window` against a real
+  canvas. Headlessly they correctly report `mode_unavailable`, which is
+  asserted, but that is the absence of a canvas rather than a capture.
+- `zoom_to_layer` and `set_active_layer` landing where you expect on screen.
+
+Do that against a throwaway project — `test-data/generated/fixture_project.qgz`
+— never one with unsaved work. A main-thread violation segfaults QGIS rather
+than raising.
