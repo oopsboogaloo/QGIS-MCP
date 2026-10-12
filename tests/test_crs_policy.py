@@ -270,6 +270,22 @@ def test_the_coarser_raster_is_the_one_that_gets_resampled():
     assert "global_dem" in report["note"], describe(report)
 
 
+def test_tier_3_honours_a_caller_supplied_target():
+    """REQ-12 forbids the *server* choosing, not the caller.
+
+    Without this, handing a candidate back would be refused exactly like not
+    choosing at all — which leaves the question the policy asked
+    unanswerable. The candidates stay in the response so what was given up is
+    still visible.
+    """
+    selection = select_target_crs(CONTINENTAL_EUROPE, prefer_crs="EPSG:3035")
+    assert selection.tier == 3, describe(selection.to_dict())
+    assert selection.crs == "EPSG:3035", describe(selection.to_dict())
+    assert selection.requires_choice is False
+    assert "supplied by the caller" in selection.reason, selection.reason
+    assert selection.candidates, "the alternatives should still be reported"
+
+
 def test_prefer_crs_overrides_the_tier_default():
     """The escape hatch for the refinement's general form.
 

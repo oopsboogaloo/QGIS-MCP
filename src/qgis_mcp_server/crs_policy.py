@@ -389,6 +389,12 @@ def select_target_crs(
         )
 
     # --- Tier 3: the server does not choose -----------------------------
+    #
+    # But the *caller* may, and that is the point of the parameter. REQ-12
+    # forbids the server selecting a projection automatically at this scale; it
+    # does not forbid honouring a decision that has been made. Without this,
+    # passing a candidate back would be refused the same way as not choosing at
+    # all, leaving the question unanswerable.
     candidates: list[CrsCandidate] = []
 
     if not beyond_utm and hemisphere is not None:
@@ -435,6 +441,22 @@ def select_target_crs(
         notes.append(
             "the AOI straddles the equator, so northern and southern UTM zones "
             "both apply in part and neither serves the whole area"
+        )
+
+    if prefer_crs:
+        return CrsSelection(
+            tier=3,
+            crs=prefer_crs,
+            reason=(
+                f"the AOI spans {len(zones)} UTM zones, so the server would not "
+                f"choose a projection -- {prefer_crs} was supplied by the caller"
+            ),
+            # Kept so the response still shows what the alternatives were, and
+            # what was given up by choosing this one.
+            candidates=tuple(candidates),
+            utm_zones=zones,
+            resampling=_resampling_report(prefer_crs, resolved_inputs),
+            notes=tuple(notes),
         )
 
     return CrsSelection(

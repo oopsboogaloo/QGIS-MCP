@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from qgis_mcp_server.acquisition import AcquisitionRunner
 from qgis_mcp_server.config import Config
 from qgis_mcp_server.credentials import CredentialStore
 from qgis_mcp_server.headless import HeadlessRunner
@@ -43,6 +44,8 @@ class ServerContext:
     #: the two is reported by search_data_sources rather than left to look
     #: like a provider that had nothing to offer.
     providers: ProviderDispatcher = field(init=False)
+    #: Download, reproject and register (task 4.7).
+    acquisition: AcquisitionRunner = field(init=False)
 
     def __post_init__(self) -> None:
         self.headless = HeadlessRunner(self.config)
@@ -57,6 +60,12 @@ class ServerContext:
         )
         self.providers = ProviderDispatcher(
             adapters=(OpenTopographyAdapter(self.credentials),)
+        )
+        self.acquisition = AcquisitionRunner(
+            config=self.config,
+            processing=self.processing,
+            headless=self.headless,
+            providers=self.providers,
         )
 
     def close(self) -> None:

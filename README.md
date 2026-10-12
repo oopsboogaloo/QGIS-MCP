@@ -32,6 +32,7 @@ Implemented so far:
 - **Task 4.4** — the OpenTopography adapter
 - **Task 4.5** — `search_data_sources`
 - **Task 4.6** — `get_dataset_licence_info`, `check_api_credentials`
+- **Task 4.7** — `download_and_register_layer`
 
 ## Spec deltas
 
@@ -129,6 +130,28 @@ Enterprise key. `check_api_credentials` reports both under
 ```sh
 uv run qgis-mcp
 ```
+
+## A worked acquisition
+
+The acquisition path is complete end to end. A typical sequence:
+
+1. **`resolve_place("Andover, Hampshire")`** → an AOI bbox in EPSG:4326, with a
+   real boundary polygon. An ambiguous name comes back as `ambiguous_place` with
+   candidates rather than a guess.
+2. **`search_data_sources(place=...)`** → one menu grouped by data type, a
+   per-provider status, any datasets excluded on area or latitude limits, and a
+   preview of the CRS acquired layers would land in.
+3. **`download_and_register_layer(provider, dataset, place=...)`** → refused,
+   with the source, format, licence tier and approximate size stated (REQ-4d).
+4. **The same call with `confirm=true`** → downloads, reprojects to the target
+   CRS keeping the original on disk (REQ-12), and registers the layer with its
+   vertical datum and provenance (REQ-13).
+5. **`clip_to_aoi`** to trim to the exact area, by bbox or boundary polygon.
+
+What is *not* there yet: four of the five declared providers have no adapter, so
+only global elevation is actually fetchable. `search_data_sources` names the gap
+in `providers_not_yet_implemented` rather than letting it look like those
+providers had nothing to offer.
 
 ## Tests
 

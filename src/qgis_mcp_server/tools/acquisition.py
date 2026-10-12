@@ -16,6 +16,7 @@ from typing import Any
 
 from qgis_mcp_protocol import ErrorCode, error, ok
 from qgis_mcp_server import modes
+from qgis_mcp_server.acquisition import _human_size
 from qgis_mcp_server.clipping import ClipRunner
 from qgis_mcp_server.context import ServerContext
 from qgis_mcp_server.crs_policy import AoiError, RasterInput, select_target_crs
@@ -155,9 +156,151 @@ OpenTopography's free API key does not cover commercial integration at all.
 """
 
 
+_DOWNLOAD_DESCRIPTION = """\
+Download one dataset, reproject it, and register it as a project layer.
+
+CALL IT TWICE. The first call, without confirm, downloads nothing — it returns
+exactly what REQ-4d requires stated beforehand: the source, the format, the
+licence tier, the approximate size, which files would be written and whether
+the project would be modified. Show that to the user, then call again with
+confirm=true. You do not have to guess what to confirm; the refusal tells you.
+
+Identify the dataset by provider and dataset, taken from a search_data_sources
+result. Give either a place name or a bbox as [min_lon, min_lat, max_lon,
+max_lat] in EPSG:4326.
+
+The layer is reprojected on registration to one projected CRS derived from the
+AOI, and the unmodified download is KEPT alongside it, so the resampling is
+always re-derivable. If the AOI spans several UTM zones the call is refused
+until you pass target_crs — at that scale the projection is a cartographic
+choice, not a default.
+
+Read the warnings. They carry the attribution a published output must show, any
+licence tier that may not cover commercial use, and — for elevation — the
+vertical datum, which decides whether two DEMs can be compared at all.
+"""
+
+
 def register(server: Any, context: ServerContext) -> None:
     """Register the acquisition-layer tools on ``server``."""
     clipper = ClipRunner(context.processing)
+
+    @server.tool(
+        name="download_and_register_layer", description=_DOWNLOAD_DESCRIPTION
+    )
+    def download_and_register_layer(
+        provider: str,
+        dataset: str,
+        place: str | None = None,
+        bbox: list[float] | None = None,
+        target_crs: str | None = None,
+        project_path: str | None = None,
+        register_layer: bool = True,
+        layer_name: str | None = None,
+        confirm: bool = False,
+        timeout_seconds: float | None = None,
+    ) -> dict[str, Any]:
+        """Fetch, reproject and register one dataset (REQ-4d, REQ-12, REQ-13).
+
+        Args:
+            provider: Provider name from a search result, e.g.
+                ``opentopography``.
+            dataset: Dataset identifier from a search result, e.g. ``COP30``.
+            place: Place name, resolved via resolve_place. Mutually exclusive
+                with bbox.
+            bbox: ``[min_lon, min_lat, max_lon, max_lat]`` in EPSG:4326.
+            target_crs: Target projected CRS. Required when the AOI spans
+                several UTM zones, since REQ-12 forbids choosing automatically.
+            project_path: Project to register into. Defaults to the configured
+                project.
+            register_layer: Whether to add the layer to a project at all.
+            layer_name: Name for the registered layer.
+            confirm: Required to actually download anything (REQ-4d).
+            timeout_seconds: Override the configured timeout.
+        """
+        decision = modes.resolve("download_and_register_layer")
+
+        if (place is None) == (bbox is None):
+            return tool_result(
+                error(
+                    ErrorCode.BAD_REQUEST,
+                    "download_and_register_layer needs exactly one of place "
+                    "or bbox.",
+                ),
+                decision,
+            )
+
+        # --- resolve the AOI (REQ-9) --------------------------------------
+        if place is not None:
+            resolution = context.places.resolve(place)
+            if resolution.state != Resolution.RESOLVED:
+                payload = resolution.to_dict()
+                detail = {k: v for k, v in payload.items() if k != "message"}
+                code = {
+                    Resolution.AMBIGUOUS: ErrorCode.AMBIGUOUS_PLACE,
+                    Resolution.NOT_FOUND: ErrorCode.PLACE_NOT_FOUND,
+                    Resolution.UNAVAILABLE: ErrorCode.GEOCODER_UNAVAILABLE,
+                }[resolution.state]
+                return tool_result(
+                    error(code, resolution.message or resolution.state, **detail),
+                    decision,
+                )
+            aoi = resolution.resolved.bbox
+        else:
+            try:
+                aoi = _validated_aoi(bbox)
+            except ValueError as exc:
+                return tool_result(
+                    error(ErrorCode.BAD_REQUEST, str(exc), bbox=list(bbox or [])),
+                    decision,
+                )
+
+        # --- locate the dataset through the provider ----------------------
+        found, failure = context.acquisition.find_dataset(provider, dataset, aoi)
+        if failure is not None:
+            return tool_result(failure, decision)
+
+        plan, failure = context.acquisition.plan(
+            found,
+            aoi,
+            target_crs=target_crs,
+            project_path=project_path,
+            register=register_layer,
+        )
+        if failure is not None:
+            return tool_result(failure, decision)
+
+        # --- REQ-4d: the gate --------------------------------------------
+        if not confirm:
+            # The disclosure *is* the refusal. Making the caller construct a
+            # confirmation from nothing would mean guessing the size and the
+            # licence, which is the opposite of what REQ-4d asks for.
+            return tool_result(
+                error(
+                    ErrorCode.CONFIRMATION_REQUIRED,
+                    f"this would download {plan.dataset.title} "
+                    f"({plan.dataset.identifier}) from {plan.dataset.provider}, "
+                    f"about {_human_size(plan.dataset.estimated_size_bytes)}, "
+                    f"licensed {plan.dataset.licence.tier}"
+                    + (
+                        f", and modify the project at {plan.project_path}"
+                        if plan.will_modify_project
+                        else ""
+                    )
+                    + ". Review the details and call again with confirm=true.",
+                    confirmation_required=True,
+                    plan=plan.to_dict(),
+                ),
+                decision,
+            )
+
+        envelope = context.acquisition.execute(
+            plan,
+            register=register_layer,
+            layer_name=layer_name,
+            timeout=timeout_seconds,
+        )
+        return tool_result(envelope, decision)
 
     @server.tool(name="search_data_sources", description=_SEARCH_DESCRIPTION)
     def search_data_sources(
