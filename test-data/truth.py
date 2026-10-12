@@ -341,6 +341,96 @@ PROJECT_LAYER_NAMES = [
 PROJECT_LAYER_COUNT = len(PROJECT_LAYER_NAMES)                 # 4
 PROJECT_RASTER_LAYER_COUNT = 1
 PROJECT_VECTOR_LAYER_COUNT = 3
+PROJECT_LAYOUT_COUNT = 0
+
+#: The three vector layers sit in a group, and one layer is unchecked.
+#:
+#: Both exist so that ``get_layers_tree`` has something to report. A flat,
+#: all-visible project cannot distinguish a tool that walks the layer tree from
+#: one that simply lists ``mapLayers()`` in arbitrary order -- the two would
+#: agree on every assertion.
+PROJECT_GROUP_NAME = "vectors"
+PROJECT_HIDDEN_LAYER = TRACKS_LAYER
+
+#: The layer tree as built, top to bottom. Order is set explicitly by the
+#: generator rather than left to ``addMapLayer``'s insert-at-top default, so
+#: that it is a declared property rather than an incidental one.
+PROJECT_TREE = [
+    {"kind": "layer", "name": "dem_su4080", "visible": True},
+    {
+        "kind": "group",
+        "name": PROJECT_GROUP_NAME,
+        "visible": True,
+        "children": [
+            {"kind": "layer", "name": SURVEY_POINTS_LAYER, "visible": True},
+            {"kind": "layer", "name": AOI_BOUNDARY_LAYER, "visible": True},
+            {"kind": "layer", "name": TRACKS_LAYER, "visible": False},
+        ],
+    },
+]
+
+# ---------------------------------------------------------------------------
+# Layer introspection expectations (task 2)
+# ---------------------------------------------------------------------------
+
+#: The GeoPackage primary key, which PyQGIS surfaces as an ordinary field.
+#:
+#: Worth recording because the two readers disagree. OGR treats ``fid`` as the
+#: feature id and leaves it out of the field list, so ``test_fixtures.py``
+#: asserts the declared schema exactly; ``QgsVectorLayer.fields()`` includes
+#: it. Neither is wrong, and a test that assumed they agreed would fail for a
+#: reason that looks like a fixture fault.
+GPKG_FID_FIELD = "fid"
+GPKG_FID_TYPE = "Integer64"
+
+
+def pyqgis_fields(declared: dict[str, str]) -> dict[str, str]:
+    """Field schema as PyQGIS reports it: the declared fields plus ``fid``."""
+    return {GPKG_FID_FIELD: GPKG_FID_TYPE, **declared}
+
+
+#: Per-layer properties ``get_layer_summary`` must report, keyed by layer name.
+#:
+#: Renderer types are QGIS's defaults for a layer added without styling. They
+#: are asserted rather than ignored so that a change in QGIS's default is
+#: reported as a change, not absorbed silently.
+LAYER_SUMMARIES: dict[str, dict] = {
+    "dem_su4080": {
+        "layer_type": "Raster",
+        "crs": PRIMARY_CRS,
+        "extent": list(EXTENT),
+        "width": DEM_WIDTH,
+        "height": DEM_HEIGHT,
+        "band_count": DEM_BAND_COUNT,
+        "data_type": "Float32",
+        "nodata_value": DEM_NODATA,
+        "renderer_type": "singlebandgray",
+    },
+    SURVEY_POINTS_LAYER: {
+        "layer_type": "Vector",
+        "crs": PRIMARY_CRS,
+        "geometry_type": "Point",
+        "feature_count": SURVEY_POINTS_COUNT,
+        "fields": pyqgis_fields(SURVEY_POINTS_FIELDS),
+        "renderer_type": "singleSymbol",
+    },
+    AOI_BOUNDARY_LAYER: {
+        "layer_type": "Vector",
+        "crs": PRIMARY_CRS,
+        "geometry_type": "Polygon",
+        "feature_count": AOI_BOUNDARY_COUNT,
+        "fields": pyqgis_fields(AOI_BOUNDARY_FIELDS),
+        "renderer_type": "singleSymbol",
+    },
+    TRACKS_LAYER: {
+        "layer_type": "Vector",
+        "crs": PRIMARY_CRS,
+        "geometry_type": "LineString",
+        "feature_count": TRACKS_COUNT,
+        "fields": pyqgis_fields(TRACKS_FIELDS),
+        "renderer_type": "singleSymbol",
+    },
+}
 
 # ---------------------------------------------------------------------------
 # Processing expectations (task 3)

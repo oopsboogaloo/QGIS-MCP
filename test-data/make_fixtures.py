@@ -307,11 +307,19 @@ def build_project(dem_path: Path, gpkg_path: Path) -> Path:
         project.setCrs(QgsCoordinateReferenceSystem(truth.PROJECT_CRS))
         project.setFilePathStorage(Qgis.FilePathType.Relative)
 
+        # The tree is built explicitly rather than left to addMapLayer, which
+        # inserts at the top and would make the order a side effect of the
+        # loop. `addToLegend=False` registers the layer without placing it, so
+        # placement below is the only thing that decides structure.
+        root = project.layerTreeRoot()
+
         raster = QgsRasterLayer(str(dem_path), "dem_su4080")
         if not raster.isValid():
             raise RuntimeError(f"generated DEM did not load as a layer: {dem_path}")
-        project.addMapLayer(raster)
+        project.addMapLayer(raster, False)
+        root.addLayer(raster)
 
+        group = root.addGroup(truth.PROJECT_GROUP_NAME)
         for layer_name in (
             truth.SURVEY_POINTS_LAYER,
             truth.AOI_BOUNDARY_LAYER,
@@ -324,14 +332,67 @@ def build_project(dem_path: Path, gpkg_path: Path) -> Path:
                 raise RuntimeError(
                     f"generated layer {layer_name} did not load from {gpkg_path}"
                 )
-            project.addMapLayer(vector)
+            project.addMapLayer(vector, False)
+            node = group.addLayer(vector)
+            if layer_name == truth.PROJECT_HIDDEN_LAYER:
+                node.setItemVisibilityChecked(False)
 
         if not project.write(str(path)):
             raise RuntimeError(f"could not write project to {path}")
+
+        # Verify the *persisted* tree, not the in-memory one. The layer tree is
+        # the one fixture property that only exists inside a project file, so
+        # re-reading is the only way to know it survived the write -- and it is
+        # checked here rather than in verify() because reading a .qgz needs the
+        # QgsApplication that is about to be torn down.
+        project.clear()
+        if not project.read(str(path)):
+            raise RuntimeError(f"could not re-read the project just written: {path}")
+
+        failures: list[str] = []
+        _check(failures, "project tree", truth.PROJECT_TREE, _describe_tree(project.layerTreeRoot()))
+        _check(
+            failures,
+            "project layout count",
+            truth.PROJECT_LAYOUT_COUNT,
+            len(project.layoutManager().layouts()),
+        )
+        _check(failures, "project CRS", truth.PROJECT_CRS, project.crs().authid())
+        _check(failures, "project title", truth.PROJECT_TITLE, project.title())
+        if failures:
+            raise VerificationError(
+                "the written project does not match truth.py:\n" + "\n".join(failures)
+            )
         project.clear()
     finally:
         app.exitQgis()
     return path
+
+
+def _describe_tree(node) -> list[dict]:
+    """The layer tree under ``node``, in the shape ``truth.PROJECT_TREE`` uses."""
+    from qgis.core import QgsLayerTreeGroup, QgsLayerTreeLayer
+
+    described: list[dict] = []
+    for child in node.children():
+        if isinstance(child, QgsLayerTreeGroup):
+            described.append(
+                {
+                    "kind": "group",
+                    "name": child.name(),
+                    "visible": child.itemVisibilityChecked(),
+                    "children": _describe_tree(child),
+                }
+            )
+        elif isinstance(child, QgsLayerTreeLayer):
+            described.append(
+                {
+                    "kind": "layer",
+                    "name": child.name(),
+                    "visible": child.itemVisibilityChecked(),
+                }
+            )
+    return described
 
 
 # ---------------------------------------------------------------------------

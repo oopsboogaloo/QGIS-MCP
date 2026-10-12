@@ -263,6 +263,28 @@ def test_project_layer_count_is_reported_in_meta(
     )
 
 
+def test_relative_project_path_resolves(runner, fixture_project, fixture_truth):
+    """A relative project path must survive the process boundary.
+
+    Regression test. The server validates the path and the child opens it, and
+    the child does not necessarily share the server's working directory -- so
+    an unresolved relative path could be confirmed by one process and fail to
+    open in the other, reported as an unreadable project rather than as the
+    path confusion it was.
+    """
+    import os
+
+    relative = os.path.relpath(fixture_project, os.getcwd())
+    assert not os.path.isabs(relative), f"{relative} should be relative"
+
+    envelope = runner.run_code(
+        "from qgis.core import QgsProject\n"
+        "result = len(QgsProject.instance().mapLayers())",
+        project_path=relative,
+    )
+    assert_result(envelope, fixture_truth.PROJECT_LAYER_COUNT, label="layer count")
+
+
 def test_missing_project_is_refused_before_launching_qgis(runner, tmp_path):
     missing = tmp_path / "nope.qgz"
     envelope = runner.run_code("result = 1", project_path=missing)
@@ -420,16 +442,20 @@ def test_tool_is_registered_with_its_safety_description(config):
 
 def test_tool_result_shape_always_carries_the_mode(config, fixture_project):
     """REQ-1b keeps ``mode`` load-bearing; the key is uniform across tools."""
+    from qgis_mcp_server import modes
     from qgis_mcp_server.context import ServerContext
-    from qgis_mcp_server.tools.raw_execution import _as_tool_result
+    from qgis_mcp_server.tools.result import tool_result
 
     with ServerContext(config) as ctx:
         envelope = ctx.headless.run_code("result = 7", project_path=fixture_project)
-    payload = _as_tool_result(envelope)
+    payload = tool_result(envelope, modes.resolve("execute_pyqgis_code_for_cli"))
 
     assert payload["ok"] is True, describe(payload)
     assert payload["result"] == 7, describe(payload)
     assert payload["mode"] == ExecutionMode.HEADLESS, describe(payload)
+    # A mode-named tool still carries the reason, so one shape serves both
+    # partitions and a caller never branches on which kind of tool it called.
+    assert payload["mode_reason"], describe(payload)
 
 
 # ---------------------------------------------------------------------------

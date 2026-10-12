@@ -20,6 +20,7 @@ from qgis_mcp_server import modes
 from qgis_mcp_server.context import ServerContext
 from qgis_mcp_server.processing import DEFAULT_RESULT_LIMIT, ProcessingUnavailable
 from qgis_mcp_server.qgis_install import QgisNotFound
+from qgis_mcp_server.tools.result import tool_result
 
 _RUN_DESCRIPTION = """\
 Run a QGIS Processing algorithm by id, with a parameter dictionary.
@@ -97,7 +98,7 @@ def register(server: Any, context: ServerContext) -> None:
             confirm=confirm,
             timeout=timeout_seconds,
         )
-        return _as_tool_result(envelope, decision)
+        return tool_result(envelope, decision)
 
     @server.tool(
         name="search_processing_algorithms", description=_SEARCH_DESCRIPTION
@@ -127,19 +128,19 @@ def register(server: Any, context: ServerContext) -> None:
                 # The provider report travels with every successful search, so
                 # that "what is available here" never requires a second call.
                 envelope.result["providers"] = _provider_report(context, provider)
-            return _as_tool_result(envelope, decision)
+            return tool_result(envelope, decision)
 
         try:
             catalogue = context.processing.catalogue()
         except (QgisNotFound, ProcessingUnavailable) as exc:
-            return _as_tool_result(
+            return tool_result(
                 modes.unavailable("search_processing_algorithms", str(exc)), decision
             )
 
         if provider and provider not in catalogue.providers:
             # An unregistered provider is reported as such rather than as zero
             # results: "no hits" implies the algorithms exist but did not match.
-            return _as_tool_result(
+            return tool_result(
                 error(
                     ErrorCode.BAD_REQUEST,
                     f"provider {provider!r} is not registered in this QGIS "
@@ -179,7 +180,7 @@ def register(server: Any, context: ServerContext) -> None:
                 result["parameters"] = detail.result.get("parameters", {})
                 result["outputs"] = detail.result.get("outputs", {})
 
-        return _as_tool_result(ok(result), decision)
+        return tool_result(ok(result), decision)
 
     return None
 
@@ -207,32 +208,6 @@ def _provider_report(
     if requested_provider:
         probe.append(requested_provider)
     return resolved.absence_report(*probe)
-
-
-def _as_tool_result(envelope: Any, decision: modes.ModeDecision) -> dict[str, Any]:
-    """Flatten an envelope, attaching the REQ-1b serving mode.
-
-    The mode comes from the dispatcher's decision rather than from the
-    envelope: these tools are mode-agnostic, so which path ran is a fact about
-    the dispatch, and ``mode_reason`` records why -- which is what makes the
-    field answer "so why is my layer not on screen?".
-    """
-    payload: dict[str, Any] = {
-        "ok": envelope.ok,
-        "mode": decision.mode,
-        "mode_reason": decision.reason,
-    }
-    if envelope.ok:
-        if isinstance(envelope.result, dict):
-            payload.update(envelope.result)
-        else:
-            payload["result"] = envelope.result
-        for key, value in envelope.meta.items():
-            if value is not None:
-                payload[key] = value
-    else:
-        payload["error"] = envelope.error or {}
-    return payload
 
 
 __all__ = ["register"]

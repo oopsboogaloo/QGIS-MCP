@@ -10,8 +10,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from qgis_mcp_protocol import ExecutionMode
+from qgis_mcp_server import modes
 from qgis_mcp_server.context import ServerContext
+from qgis_mcp_server.tools.result import tool_result
 
 #: The description the agent reads. It carries three things it cannot infer:
 #: the REQ-3 return convention, the REQ-1a refusal to substitute the other
@@ -55,41 +56,15 @@ def register(server: Any, context: ServerContext) -> None:
             timeout_seconds: Override the configured timeout. Raise it for long
                 Processing runs over large rasters.
         """
+        decision = modes.resolve("execute_pyqgis_code_for_cli")
         envelope = context.headless.run_code(
             code,
             project_path=project_path,
             timeout=timeout_seconds,
         )
-        return _as_tool_result(envelope)
+        return tool_result(envelope, decision)
 
     return None
-
-
-def _as_tool_result(envelope: Any) -> dict[str, Any]:
-    """Flatten an envelope into the tool's return shape.
-
-    Failures come back as a returned value rather than a raised exception. The
-    contracts this server is built on -- REQ-1a's named missing mode, REQ-6/7/9
-    returning candidates, REQ-10's per-provider statuses -- all require an error
-    to carry structured detail the caller can act on. An exception reduces that
-    to a string, and the agent's next move usually depends on the detail.
-
-    ``mode`` is always present. REQ-1b makes that load-bearing for the
-    mode-agnostic tools, and keeping the key uniform here means a caller never
-    has to remember which tools report it.
-    """
-    payload: dict[str, Any] = {
-        "ok": envelope.ok,
-        "mode": envelope.mode or ExecutionMode.HEADLESS,
-    }
-    if envelope.ok:
-        payload["result"] = envelope.result
-        payload.update(envelope.meta)
-    else:
-        payload["error"] = envelope.error or {}
-    if envelope.diagnostics:
-        payload["diagnostics"] = envelope.diagnostics
-    return payload
 
 
 __all__ = ["register"]

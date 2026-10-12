@@ -20,6 +20,8 @@ Implemented so far:
 
 - **Task 0** — synthetic test fixtures (`test-data/`)
 - **Task 1** — headless `execute_pyqgis_code_for_cli`
+- **Task 2** — `get_project_summary`, `get_layer_summary`, `get_layers_tree`,
+  `get_missing_layers`, `get_project_path_info`
 - **Task 3** — `run_processing_algorithm`, `search_processing_algorithms`
 
 ## Spec deltas

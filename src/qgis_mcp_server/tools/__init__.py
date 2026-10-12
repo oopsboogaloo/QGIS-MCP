@@ -6,10 +6,14 @@ module knows which execution path it belongs to, and the dispatcher consults
 the partition in ``modes.py`` rather than inferring the mode from context.
 """
 
-from qgis_mcp_server.tools import processing_algorithms, raw_execution
+from qgis_mcp_server.tools import (
+    introspection,
+    processing_algorithms,
+    raw_execution,
+)
 
 #: Registered in order. Each module exposes ``register(server, context)``.
-MODULES = (raw_execution, processing_algorithms)
+MODULES = (raw_execution, introspection, processing_algorithms)
 
 
 def register_all(server, context) -> None:

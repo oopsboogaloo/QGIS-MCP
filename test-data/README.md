@@ -181,13 +181,44 @@ by construction:
 ## The project
 
 `fixture_project.qgz`, titled "QGIS MCP synthetic fixtures (SU4080)", project
-CRS EPSG:27700, with four layers: `dem_su4080`, `survey_points`,
-`aoi_boundary`, `tracks`.
+CRS EPSG:27700, with four layers and no print layouts.
+
+The layer tree is deliberately not flat:
+
+```
+dem_su4080            (layer, visible)
+vectors               (group,  visible)
+  ├─ survey_points    (layer, visible)
+  ├─ aoi_boundary     (layer, visible)
+  └─ tracks           (layer, HIDDEN)
+```
+
+The group and the one unchecked layer both exist so that `get_layers_tree` has
+something to report. In a flat, all-visible project, a tool that walks the
+layer tree and one that simply lists `mapLayers()` in arbitrary order would
+agree on every assertion — so neither nesting nor visibility would be tested.
+Order is set explicitly by the generator rather than left to `addMapLayer`'s
+insert-at-top default, which makes it a declared property rather than an
+incidental one.
 
 Layer paths are stored **relative** to the project, so `generated/` stays
 portable. A project holding absolute paths would resolve only on the machine
 that built it, which would make REQ-2's "supply a project file path" contract
 untestable anywhere else.
+
+Relative storage also buys a test for free: copying `fixture_project.qgz` alone
+into an empty directory breaks all four layer references at once, which is a
+real moved-project failure rather than a hand-corrupted file. That is how
+`get_missing_layers` is tested, with no extra fixture.
+
+### One field the two readers disagree about
+
+GeoPackage layers carry an `fid` primary key. OGR treats it as the feature id
+and leaves it out of the field list; `QgsVectorLayer.fields()` includes it as an
+ordinary `Integer64` field. Neither is wrong, so `truth.py` records both views —
+`SURVEY_POINTS_FIELDS` for the OGR-level schema, `pyqgis_fields()` for what QGIS
+sees. A test that assumed they agreed would fail for a reason that looks like a
+fixture fault.
 
 ## Still to come
 
