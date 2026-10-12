@@ -35,7 +35,10 @@ Implemented so far:
 - **Task 4.7** — `download_and_register_layer`
 - **Task 5.1** — `fetch_elevation_data`
 - **Task 5.2** — `export_heightmap`
+- **Task 5.3** — `export_georeferenced_texture`
 - **Task 5.4** — `model_sea_level_change`
+- **Task 5.5** — `export_vector_layer_for_mesh`
+- **Task 5.6** — `render_map_to_path`
 
 ## Spec deltas
 
@@ -169,6 +172,19 @@ nodata_cells             0
 Set the plane's X size to 1, its Y size to 1/`aspect_ratio`, and the
 displacement strength to `displacement_ratio`. Without those numbers the
 vertical exaggeration is guesswork and differs between exports.
+
+**`export_georeferenced_texture`** renders the same extent as an image with its
+world box, so texture and heightmap UV-align. **`export_vector_layer_for_mesh`**
+drapes roads or contours over the DEM as GeoJSON-with-Z or OBJ polylines. And
+**`render_map_to_path`** exports a Print Layout to PNG, PDF or SVG — headless,
+since a layout is a project object rather than a canvas.
+
+One caution that applies to both rendering tools: **always use the returned
+`extent`, never the one you asked for.** QGIS expands an extent to match the
+output image's aspect ratio, so a 1 km square requested at 256×200 px really
+renders 1.28 km × 1 km. A texture UV-mapped to the requested box would be out
+by 140 m per side, with nothing in the image to show it. Passing `pixel_size`
+instead of `width`+`height` avoids the expansion entirely.
 
 What is *not* there yet: four of the five declared providers have no adapter, so
 only global elevation is actually fetchable. `search_data_sources` names the gap

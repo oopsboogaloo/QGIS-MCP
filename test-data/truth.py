@@ -336,6 +336,21 @@ TRACKS = [
     },
 ]
 TRACKS_COUNT = len(TRACKS)                                     # 2
+
+#: Elevations sampled from the DEM at track_a's two vertices (task 5.5).
+#:
+#: Both vertices land exactly on a DEM pixel centre, which makes the sampled
+#: value exact rather than interpolated -- and because the base ramp is linear
+#: in row and column, bilinear sampling returns the formula's value with no
+#: rounding to negotiate.
+#:
+#:   (440050, 180050) -> col 2, row 47 -> 100 + 2*47 + 1*2  = 196.0
+#:   (440550, 180050) -> col 27, row 47 -> 100 + 2*47 + 1*27 = 221.0
+#:
+#: Neither falls in the hill, coastal inlet, basin or nodata region, so both
+#: are pure base ramp.
+TRACK_A_START_Z = BASE_INTERCEPT + BASE_ROW_COEFF * 47 + BASE_COL_COEFF * 2
+TRACK_A_END_Z = BASE_INTERCEPT + BASE_ROW_COEFF * 47 + BASE_COL_COEFF * 27
 TRACKS_TOTAL_LENGTH_M = sum(track["length_m"] for track in TRACKS)  # 1200.0
 
 # ---------------------------------------------------------------------------
@@ -355,7 +370,32 @@ PROJECT_LAYER_NAMES = [
 PROJECT_LAYER_COUNT = len(PROJECT_LAYER_NAMES)                 # 4
 PROJECT_RASTER_LAYER_COUNT = 1
 PROJECT_VECTOR_LAYER_COUNT = 3
-PROJECT_LAYOUT_COUNT = 0
+#: A print layout, so task 5.6's headless layout rendering has something to
+#: render. Without one, `render_map_to_path`'s layout path -- the half that is
+#: mode-agnostic and works headless -- could not be tested at all.
+PROJECT_LAYOUT_NAME = "fixture_layout"
+PROJECT_LAYOUT_COUNT = 1
+
+#: A4 landscape, and one map item filling most of it.
+LAYOUT_PAGE_WIDTH_MM = 297.0
+LAYOUT_PAGE_HEIGHT_MM = 210.0
+LAYOUT_MAP_X_MM = 10.0
+LAYOUT_MAP_Y_MM = 10.0
+LAYOUT_MAP_WIDTH_MM = 277.0
+LAYOUT_MAP_HEIGHT_MM = 190.0
+
+
+def layout_pixels(dpi: float) -> tuple[int, int]:
+    """Expected image size for the layout at ``dpi``.
+
+    Millimetres to inches to pixels. Compared with a small tolerance in the
+    tests: QGIS rounds page dimensions to whole pixels, and which way it rounds
+    is not something this project should assert.
+    """
+    return (
+        round(LAYOUT_PAGE_WIDTH_MM / 25.4 * dpi),
+        round(LAYOUT_PAGE_HEIGHT_MM / 25.4 * dpi),
+    )
 
 #: The three vector layers sit in a group, and one layer is unchecked.
 #:

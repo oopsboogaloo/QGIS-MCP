@@ -145,8 +145,12 @@ def test_project_summary_reports_no_invalid_layers(project_summary):
 
 
 def test_project_summary_layout_count(project_summary, fixture_truth):
+    """The fixture gained a print layout so task 5.6 had something to render."""
     assert project_summary["layout_count"] == fixture_truth.PROJECT_LAYOUT_COUNT
-    assert project_summary["layouts"] == []
+    assert project_summary["layouts"] == [fixture_truth.PROJECT_LAYOUT_NAME], (
+        f"expected [{fixture_truth.PROJECT_LAYOUT_NAME!r}], got "
+        f"{project_summary['layouts']}"
+    )
 
 
 def test_active_layer_is_reported_unavailable_not_null(project_summary):

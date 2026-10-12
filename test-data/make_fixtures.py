@@ -288,8 +288,14 @@ def build_project(dem_path: Path, gpkg_path: Path) -> Path:
         Qgis,
         QgsApplication,
         QgsCoordinateReferenceSystem,
+        QgsLayoutItemMap,
+        QgsLayoutPoint,
+        QgsLayoutSize,
+        QgsPrintLayout,
         QgsProject,
         QgsRasterLayer,
+        QgsRectangle,
+        QgsUnitTypes,
         QgsVectorLayer,
     )
 
@@ -337,6 +343,9 @@ def build_project(dem_path: Path, gpkg_path: Path) -> Path:
             if layer_name == truth.PROJECT_HIDDEN_LAYER:
                 node.setItemVisibilityChecked(False)
 
+        _add_layout(project, QgsPrintLayout, QgsLayoutItemMap, QgsLayoutPoint,
+                    QgsLayoutSize, QgsRectangle, QgsUnitTypes)
+
         if not project.write(str(path)):
             raise RuntimeError(f"could not write project to {path}")
 
@@ -357,6 +366,12 @@ def build_project(dem_path: Path, gpkg_path: Path) -> Path:
             truth.PROJECT_LAYOUT_COUNT,
             len(project.layoutManager().layouts()),
         )
+        _check(
+            failures,
+            "layout names",
+            [truth.PROJECT_LAYOUT_NAME],
+            [item.name() for item in project.layoutManager().layouts()],
+        )
         _check(failures, "project CRS", truth.PROJECT_CRS, project.crs().authid())
         _check(failures, "project title", truth.PROJECT_TITLE, project.title())
         if failures:
@@ -367,6 +382,48 @@ def build_project(dem_path: Path, gpkg_path: Path) -> Path:
     finally:
         app.exitQgis()
     return path
+
+
+def _add_layout(project, QgsPrintLayout, QgsLayoutItemMap, QgsLayoutPoint,
+                QgsLayoutSize, QgsRectangle, QgsUnitTypes) -> None:
+    """Add an A4 landscape print layout with one map item.
+
+    Task 5.6's layout rendering is the half of `render_map_to_path` that works
+    headless, and it is untestable against a project with no layouts. The page
+    size is declared in `truth.py` so the exported image's dimensions can be
+    asserted rather than merely observed.
+    """
+    layout = QgsPrintLayout(project)
+    layout.initializeDefaults()
+    layout.setName(truth.PROJECT_LAYOUT_NAME)
+
+    page = layout.pageCollection().page(0)
+    page.setPageSize(
+        QgsLayoutSize(
+            truth.LAYOUT_PAGE_WIDTH_MM,
+            truth.LAYOUT_PAGE_HEIGHT_MM,
+            QgsUnitTypes.LayoutMillimeters,
+        )
+    )
+
+    item = QgsLayoutItemMap(layout)
+    item.attemptMove(
+        QgsLayoutPoint(
+            truth.LAYOUT_MAP_X_MM, truth.LAYOUT_MAP_Y_MM, QgsUnitTypes.LayoutMillimeters
+        )
+    )
+    item.attemptResize(
+        QgsLayoutSize(
+            truth.LAYOUT_MAP_WIDTH_MM,
+            truth.LAYOUT_MAP_HEIGHT_MM,
+            QgsUnitTypes.LayoutMillimeters,
+        )
+    )
+    item.setExtent(QgsRectangle(*truth.EXTENT))
+    item.setCrs(project.crs())
+    layout.addLayoutItem(item)
+
+    project.layoutManager().addLayout(layout)
 
 
 def _describe_tree(node) -> list[dict]:

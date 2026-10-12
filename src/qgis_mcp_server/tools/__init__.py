@@ -11,6 +11,7 @@ from qgis_mcp_server.tools import (
     introspection,
     processing_algorithms,
     raw_execution,
+    rendering,
     terrain,
 )
 
@@ -21,6 +22,7 @@ MODULES = (
     processing_algorithms,
     acquisition,
     terrain,
+    rendering,
 )
 
 

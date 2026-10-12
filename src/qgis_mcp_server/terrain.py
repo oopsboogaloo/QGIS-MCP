@@ -17,6 +17,8 @@ from qgis_mcp_protocol import Envelope, ErrorCode, ExecutionMode, error
 from qgis_mcp_server.headless import HeadlessRunner
 
 TERRAIN_SCRIPT = "terrain.py"
+RENDER_SCRIPT = "render.py"
+MESH_SCRIPT = "meshexport.py"
 
 #: Heightmap output formats, mirroring the child's own table.
 HEIGHTMAP_FORMATS = ("png", "tif", "tif32")
@@ -27,6 +29,17 @@ HEIGHTMAP_FORMATS = ("png", "tif", "tif32")
 CONNECTIVITY = ("bathtub", "ocean")
 
 NODATA_FILLS = ("min", "interpolate")
+
+#: Raster formats for a map render, and for a layout export.
+IMAGE_FORMATS = ("png", "jpg", "tif")
+LAYOUT_FORMATS = ("png", "pdf", "svg", "jpg")
+
+#: Mesh-friendly vector formats (task 5.5).
+MESH_FORMATS = ("geojson", "obj")
+
+#: Upper bound on layout export resolution. Past this the output is
+#: gigabytes for no visible gain, and a typo is far likelier than intent.
+MAX_DPI = 2400.0
 
 
 @dataclass
@@ -187,8 +200,182 @@ class TerrainRunner:
         )
 
 
+    # -- 5.3 and 5.6: rendering ------------------------------------------
+
+    def _render(
+        self,
+        request: dict[str, Any],
+        project_path: Path | str | None,
+        *,
+        timeout: float | None,
+    ) -> Envelope:
+        resolved, failure = self.headless.resolve_project(project_path)
+        if failure is not None:
+            return failure
+        if resolved is None:
+            # Rendering is always of *something in a project*: a layout is a
+            # project object, and a layer combination needs layers to resolve
+            # names against. Checked here so the common misconfiguration does
+            # not cost a QGIS startup.
+            return error(
+                ErrorCode.BAD_REQUEST,
+                "rendering needs a project. Pass project_path, or configure "
+                "one with --project.",
+                mode=ExecutionMode.HEADLESS,
+            )
+        return self.headless.run_child(
+            RENDER_SCRIPT,
+            {**request, "project_path": str(resolved)},
+            timeout=timeout,
+            timeout_hint=(
+                "A render at high DPI over many layers takes proportionally "
+                "longer; raise the timeout rather than reducing the DPI."
+            ),
+        )
+
+    def render_layout(
+        self,
+        destination: Path | str,
+        *,
+        layout: str | None = None,
+        image_format: str = "png",
+        dpi: float = 300.0,
+        world_file: bool = True,
+        project_path: Path | str | None = None,
+        timeout: float | None = None,
+    ) -> Envelope:
+        """Export a Print Layout. Mode-agnostic under REQ-1b."""
+        if image_format not in LAYOUT_FORMATS:
+            return error(
+                ErrorCode.BAD_REQUEST,
+                f"image_format must be one of {LAYOUT_FORMATS}; got "
+                f"{image_format!r}",
+                mode=ExecutionMode.HEADLESS,
+                supported_formats=list(LAYOUT_FORMATS),
+            )
+        if not 0 < dpi <= MAX_DPI:
+            return error(
+                ErrorCode.BAD_REQUEST,
+                f"dpi must be between 1 and {MAX_DPI:.0f}; got {dpi}",
+                mode=ExecutionMode.HEADLESS,
+            )
+        return self._render(
+            {
+                "operation": "render_layout",
+                "destination": str(Path(destination).expanduser().resolve()),
+                "layout": layout,
+                "format": image_format,
+                "dpi": dpi,
+                "world_file": world_file,
+            },
+            project_path,
+            timeout=timeout,
+        )
+
+    def render_map(
+        self,
+        destination: Path | str,
+        *,
+        layers: list[str] | None = None,
+        extent: tuple[float, float, float, float] | None = None,
+        extent_crs: str | None = None,
+        crs: str | None = None,
+        pixel_size: float | None = None,
+        width: int | None = None,
+        height: int | None = None,
+        image_format: str = "png",
+        background: str | None = None,
+        transparent: bool = False,
+        dpi: float | None = None,
+        project_path: Path | str | None = None,
+        timeout: float | None = None,
+    ) -> Envelope:
+        """Render a layer combination, reporting the world box it covers."""
+        if image_format not in IMAGE_FORMATS:
+            return error(
+                ErrorCode.BAD_REQUEST,
+                f"image_format must be one of {IMAGE_FORMATS}; got "
+                f"{image_format!r}",
+                mode=ExecutionMode.HEADLESS,
+                supported_formats=list(IMAGE_FORMATS),
+            )
+        return self._render(
+            {
+                "operation": "render_map",
+                "destination": str(Path(destination).expanduser().resolve()),
+                "layers": list(layers) if layers else None,
+                "extent": [float(value) for value in extent] if extent else None,
+                "extent_crs": extent_crs,
+                "crs": crs,
+                "pixel_size": pixel_size,
+                "width": width,
+                "height": height,
+                "format": image_format,
+                "background": background,
+                "transparent": transparent,
+                "dpi": dpi,
+            },
+            project_path,
+            timeout=timeout,
+        )
+
+    # -- 5.5: vector export ----------------------------------------------
+
+    def export_vector_for_mesh(
+        self,
+        source: Path | str,
+        destination: Path | str,
+        *,
+        layer: str | None = None,
+        mesh_format: str = "geojson",
+        dem: Path | str | None = None,
+        z_scale: float = 1.0,
+        local_origin: bool | None = None,
+        timeout: float | None = None,
+    ) -> Envelope:
+        """Export a vector layer for Blender, optionally draped over a DEM."""
+        resolved, failure = self._check_source(source)
+        if failure is not None:
+            return failure
+        if mesh_format not in MESH_FORMATS:
+            return error(
+                ErrorCode.BAD_REQUEST,
+                f"mesh_format must be one of {MESH_FORMATS}; got "
+                f"{mesh_format!r}",
+                mode=ExecutionMode.HEADLESS,
+                supported_formats=list(MESH_FORMATS),
+            )
+
+        resolved_dem = None
+        if dem:
+            resolved_dem, failure = self._check_source(dem)
+            if failure is not None:
+                return failure
+
+        return self.headless.run_child(
+            MESH_SCRIPT,
+            {
+                "operation": "export_vector_for_mesh",
+                "source": str(resolved),
+                "layer": layer,
+                "destination": str(Path(destination).expanduser().resolve()),
+                "format": mesh_format,
+                "dem": str(resolved_dem) if resolved_dem else None,
+                "z_scale": z_scale,
+                "local_origin": local_origin,
+            },
+            timeout=timeout,
+        )
+
+
 __all__ = [
     "CONNECTIVITY",
+    "IMAGE_FORMATS",
+    "LAYOUT_FORMATS",
+    "MESH_FORMATS",
+    "MAX_DPI",
+    "MESH_SCRIPT",
+    "RENDER_SCRIPT",
     "HEIGHTMAP_FORMATS",
     "NODATA_FILLS",
     "TERRAIN_SCRIPT",
