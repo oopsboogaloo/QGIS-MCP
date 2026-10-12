@@ -157,9 +157,14 @@ listener plugin running inside QGIS.
 plugin directory, then enable it in **Plugins → Manage and Install Plugins**:
 
 ```
-%APPDATA%\QGIS\QGIS3\profiles\default\python\plugins\qgis_mcp_plugin   (Windows)
-~/.local/share/QGIS/QGIS3/profiles/default/python/plugins/qgis_mcp_plugin  (Linux)
+%APPDATA%\QGIS\QGIS4\profiles\default\python\plugins\qgis_mcp_plugin   (Windows)
+~/.local/share/QGIS/QGIS4/profiles/default/python/plugins/qgis_mcp_plugin  (Linux)
 ```
+
+Note `QGIS4`, not `QGIS3`. QGIS 4 keeps an entirely separate profile tree from
+3.x, so settings, plugins and saved connections do not carry across — and a
+plugin dropped into the `QGIS3` path will simply never appear. The `plugins`
+directory does not exist until something creates it.
 
 Start it from **Plugins → QGIS MCP → Start MCP listener**. Port and autostart
 live in `QSettings` under `qgis_mcp/port` and `qgis_mcp/autostart`; the server
