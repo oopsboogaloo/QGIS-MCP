@@ -29,6 +29,9 @@ Implemented so far:
 - **Task 4.1** — `resolve_place` (Nominatim; the two UK gazetteers deferred)
 - **Task 4.2** — `clip_to_aoi`
 - **Task 4.3** — CRS policy and `select_target_crs`
+- **Task 4.4** — the OpenTopography adapter
+- **Task 4.5** — `search_data_sources`
+- **Task 4.6** — `get_dataset_licence_info`, `check_api_credentials`
 
 ## Spec deltas
 
@@ -62,6 +65,14 @@ ordinary virtualenv and only needs to be pointed at a QGIS install once.
 
 ```sh
 uv sync
+```
+
+**On OneDrive:** this checkout lives under OneDrive, whose cloud-files filter
+does not support hardlinks, and `uv` fails with `os error 396` when it tries.
+Set `UV_LINK_MODE=copy` once and it goes away:
+
+```powershell
+setx UV_LINK_MODE copy
 ```
 
 Then point the server at a QGIS install. Discovery is automatic where QGIS is
@@ -136,6 +147,19 @@ error rather than quietly going online and passing. Re-record with:
 
 ```sh
 uv run python test-data/record_geocoder_fixtures.py
+```
+
+The OpenTopography fixtures in `test-data/provider-fixtures/` are committed for
+the same reason — recorded real responses, including the two HTTP 400 error
+bodies, which are where the actual parsing happens. Re-record with
+`test-data/record_provider_fixtures.py` (spends 3 API calls).
+
+**Integration tests are excluded from the default pass**, and that is not a
+preference: they spend OpenTopography calls against an allowance of 50 per
+24 hours, so a plain `pytest` must not touch them. Run them deliberately:
+
+```sh
+uv run pytest -m integration
 ```
 
 See [`test-data/README.md`](test-data/README.md) for the fixture contents and

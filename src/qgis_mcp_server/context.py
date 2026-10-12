@@ -19,6 +19,8 @@ from qgis_mcp_server.geocoding import (
     ResolutionCache,
 )
 from qgis_mcp_server.processing import ProcessingRunner
+from qgis_mcp_server.providers.dispatcher import ProviderDispatcher
+from qgis_mcp_server.providers.opentopography import OpenTopographyAdapter
 
 
 @dataclass
@@ -34,6 +36,13 @@ class ServerContext:
     #: Shared so the Nominatim rate limiter and the cache are process-wide
     #: rather than per call -- which is what keeps usage inside policy.
     places: PlaceResolver = field(init=False)
+    #: Data provider adapters, behind the REQ-10 dispatcher.
+    #:
+    #: Only the providers with an implemented adapter appear here. The five
+    #: declared in providers/catalogue.py are the v1 target; the gap between
+    #: the two is reported by search_data_sources rather than left to look
+    #: like a provider that had nothing to offer.
+    providers: ProviderDispatcher = field(init=False)
 
     def __post_init__(self) -> None:
         self.headless = HeadlessRunner(self.config)
@@ -45,6 +54,9 @@ class ServerContext:
                     cache=ResolutionCache(self.config.cache_dir / "geocoder")
                 ),
             )
+        )
+        self.providers = ProviderDispatcher(
+            adapters=(OpenTopographyAdapter(self.credentials),)
         )
 
     def close(self) -> None:

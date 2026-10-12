@@ -1,0 +1,13 @@
+{
+  "aoi": [
+    -170.0,
+    -60.0,
+    170.0,
+    70.0
+  ],
+  "bytes": 157,
+  "demtype": "COP30",
+  "endpoint": "https://portal.opentopography.org/API/globaldem",
+  "outputFormat": "GTiff",
+  "status": 400
+}

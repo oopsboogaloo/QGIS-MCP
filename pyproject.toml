@@ -30,7 +30,12 @@ packages = ["src/qgis_mcp_protocol", "src/qgis_mcp_server"]
 testpaths = ["tests"]
 # Fixture-based assertions compare structured values; the long diffs are the
 # point (REQ-T3), so don't let pytest truncate them.
-addopts = "-ra --verbose"
+#
+# Integration tests are excluded by default, and that is not a preference: they
+# spend OpenTopography API calls against an allowance of 50 per 24 hours, so a
+# plain `pytest` must not touch them. Run them deliberately with
+# `pytest -m integration`, which overrides this.
+addopts = "-ra --verbose -m 'not integration'"
 markers = [
-    "integration: hits the network or a live QGIS session; excluded from the default pass",
+    "integration: hits the network or a live QGIS session, and may spend API quota; excluded from the default pass",
 ]

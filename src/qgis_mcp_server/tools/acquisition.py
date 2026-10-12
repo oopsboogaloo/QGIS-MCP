@@ -20,7 +20,12 @@ from qgis_mcp_server.clipping import ClipRunner
 from qgis_mcp_server.context import ServerContext
 from qgis_mcp_server.crs_policy import AoiError, RasterInput, select_target_crs
 from qgis_mcp_server.geocoding import Resolution
-from qgis_mcp_server.providers.catalogue import ALL_CREDENTIALS, ALL_PROVIDERS
+from qgis_mcp_server.providers.base import DataType, LicenceTier
+from qgis_mcp_server.providers.catalogue import (
+    ALL_CREDENTIALS,
+    ALL_PROVIDERS,
+    PROVIDERS_BY_NAME,
+)
 from qgis_mcp_server.tools.result import tool_result
 
 _CLIP_DESCRIPTION = """\
@@ -110,9 +115,247 @@ within the geocoder's usage policy.
 """
 
 
+_SEARCH_DESCRIPTION = """\
+Find data available for an area, grouped by type, across every provider.
+
+Give either a place name or a bbox as [min_lon, min_lat, max_lon, max_lat] in
+EPSG:4326. A place name is resolved first, and an ambiguous one comes back as
+ambiguous_place with candidates rather than a guess.
+
+Returns one combined menu grouped by data type, not one response per type. It
+also reports, for every provider, whether it answered — and if not, why:
+out of coverage, no API key, failed, or timed out. A provider missing a key is
+NOT a blocker; the rest of the menu is still returned, so there is no need to
+check credentials before calling this.
+
+Read dataset_exclusions before concluding something is unavailable. A large AOI
+commonly excludes the 30 m elevation products on per-request area limits while
+leaving the 90 m ones, and the remedy — split the AOI — is only obvious once
+the reason is stated.
+
+target_crs previews what acquired layers would be reprojected to. If it says
+requires_choice, settle that before downloading rather than after.
+
+Nothing is downloaded. Use download_and_register_layer for that, per dataset.
+"""
+
+_LICENCE_DESCRIPTION = """\
+Report the licence and attribution terms for a provider or a dataset.
+
+Use it before publishing anything built from acquired data, and before using
+acquired data in paid work. Commission deliverables can carry redistribution
+or attribution obligations that differ per source, and those are not visible
+in the data itself.
+
+Returns the licence tier, what attribution must appear in a published output,
+and whether the tier needs checking for commercial use. Two cases to know:
+OpenStreetMap is share-alike, so a derived *database* must be offered under
+ODbL (a produced map or image generally needs only attribution); and
+OpenTopography's free API key does not cover commercial integration at all.
+"""
+
+
 def register(server: Any, context: ServerContext) -> None:
     """Register the acquisition-layer tools on ``server``."""
     clipper = ClipRunner(context.processing)
+
+    @server.tool(name="search_data_sources", description=_SEARCH_DESCRIPTION)
+    def search_data_sources(
+        place: str | None = None,
+        bbox: list[float] | None = None,
+        data_types: list[str] | None = None,
+        confidence_threshold: float | None = None,
+        timeout_seconds: float | None = None,
+    ) -> dict[str, Any]:
+        """Search every provider for data covering an area (REQ-8, REQ-9, REQ-10).
+
+        Args:
+            place: Place name, resolved via resolve_place. Mutually exclusive
+                with bbox.
+            bbox: ``[min_lon, min_lat, max_lon, max_lat]`` in EPSG:4326.
+            data_types: Restrict to these types, e.g. ``["elevation"]``. Omit
+                for everything available.
+            confidence_threshold: Passed to place resolution.
+            timeout_seconds: Bound on the provider fan-out.
+        """
+        decision = modes.resolve("search_data_sources")
+
+        if (place is None) == (bbox is None):
+            return tool_result(
+                error(
+                    ErrorCode.BAD_REQUEST,
+                    "search_data_sources needs exactly one of place or bbox.",
+                ),
+                decision,
+            )
+
+        requested = tuple(data_types) if data_types else None
+        if requested:
+            unknown = [
+                value for value in requested if value not in DataType.ALL
+            ]
+            if unknown:
+                return tool_result(
+                    error(
+                        ErrorCode.BAD_REQUEST,
+                        f"unknown data type(s): {', '.join(unknown)}",
+                        requested=list(requested),
+                        supported_data_types=list(DataType.ALL),
+                    ),
+                    decision,
+                )
+
+        # --- resolve the AOI ---------------------------------------------
+        resolved_place: dict[str, Any] | None = None
+        if place is not None:
+            # REQ-9: resolve, and proceed only on exactly one strong candidate.
+            resolution = context.places.resolve(
+                place, threshold=confidence_threshold
+            )
+            if resolution.state != Resolution.RESOLVED:
+                payload = resolution.to_dict()
+                detail = {
+                    key: value
+                    for key, value in payload.items()
+                    if key != "message"
+                }
+                code = {
+                    Resolution.AMBIGUOUS: ErrorCode.AMBIGUOUS_PLACE,
+                    Resolution.NOT_FOUND: ErrorCode.PLACE_NOT_FOUND,
+                    Resolution.UNAVAILABLE: ErrorCode.GEOCODER_UNAVAILABLE,
+                }[resolution.state]
+                return tool_result(
+                    error(code, resolution.message or resolution.state, **detail),
+                    decision,
+                )
+            aoi = resolution.resolved.bbox
+            resolved_place = resolution.resolved.to_dict()
+        else:
+            try:
+                aoi = _validated_aoi(bbox)
+            except ValueError as exc:
+                return tool_result(
+                    error(ErrorCode.BAD_REQUEST, str(exc), bbox=list(bbox or [])),
+                    decision,
+                )
+
+        # --- fan out ------------------------------------------------------
+        outcome = context.providers.search(
+            aoi, requested, timeout=timeout_seconds
+        )
+        result = outcome.to_dict()
+        result["aoi"] = list(aoi)
+        result["aoi_crs"] = "EPSG:4326"
+        result["aoi_source"] = "place" if place is not None else "bbox"
+        if resolved_place is not None:
+            result["resolved_place"] = resolved_place
+        if requested:
+            result["requested_data_types"] = list(requested)
+
+        # Dataset-level exclusions, which the dispatcher cannot know about:
+        # they are a property of one provider's catalogue rather than of the
+        # provider. Left out, a large AOI would silently return only coarse
+        # products and look like that is all that exists.
+        exclusions: list[dict[str, Any]] = []
+        for adapter in context.providers.adapters:
+            reporter = getattr(adapter, "unavailable_for", None)
+            if reporter is None:
+                continue
+            for entry in reporter(aoi):
+                exclusions.append({"provider": adapter.name, **entry})
+        if exclusions:
+            result["dataset_exclusions"] = exclusions
+
+        # The declared-versus-implemented gap, stated rather than left to look
+        # like a provider that simply had nothing for this area.
+        implemented = {adapter.name for adapter in context.providers.adapters}
+        pending = [
+            provider.to_dict() | {"status": "adapter not yet implemented"}
+            for provider in ALL_PROVIDERS
+            if provider.name not in implemented
+        ]
+        if pending:
+            result["providers_not_yet_implemented"] = [
+                {
+                    "name": entry["name"],
+                    "data_types": entry["data_types"],
+                    "coverage_description": entry["coverage_description"],
+                    "status": entry["status"],
+                }
+                for entry in pending
+            ]
+
+        # REQ-12 preview: the AOI is already known, so answering now saves a
+        # round-trip -- and a tier-3 AOI needs a decision before anything is
+        # downloaded, not after three layers have arrived in the wrong CRS.
+        try:
+            result["target_crs"] = select_target_crs(aoi).to_dict()
+        except AoiError as exc:
+            result["target_crs"] = {"error": str(exc)}
+
+        return tool_result(ok(result), decision)
+
+    @server.tool(name="get_dataset_licence_info", description=_LICENCE_DESCRIPTION)
+    def get_dataset_licence_info(
+        provider: str | None = None,
+        dataset: str | None = None,
+    ) -> dict[str, Any]:
+        """Report licence terms for a provider, a dataset, or everything.
+
+        Args:
+            provider: Provider name, e.g. ``opentopography``. Omit for all.
+            dataset: Dataset identifier, for a per-dataset answer where the
+                provider distinguishes them.
+        """
+        decision = modes.resolve("get_dataset_licence_info")
+
+        if provider is not None and provider not in PROVIDERS_BY_NAME:
+            return tool_result(
+                error(
+                    ErrorCode.BAD_REQUEST,
+                    f"unknown provider {provider!r}",
+                    known_providers=sorted(PROVIDERS_BY_NAME),
+                ),
+                decision,
+            )
+
+        selected = (
+            [PROVIDERS_BY_NAME[provider]] if provider else list(ALL_PROVIDERS)
+        )
+        entries = []
+        for capability in selected:
+            entry = {
+                "provider": capability.name,
+                "long_name": capability.long_name,
+                "licence": capability.licence.to_dict(),
+            }
+            if dataset and capability.name == provider:
+                entry["dataset"] = dataset
+                # Per-dataset terms are the provider's to state; where the
+                # tier is MIXED the provider-level answer is explicitly not
+                # sufficient, and saying so beats implying it is.
+                if capability.licence.tier == LicenceTier.MIXED:
+                    entry["caveat"] = (
+                        f"{capability.long_name} licenses products under "
+                        f"different terms, so this provider-level answer does "
+                        f"not settle {dataset!r}. Check the dataset's own "
+                        f"terms at {capability.licence.url or 'the provider'}."
+                    )
+            entries.append(entry)
+
+        return tool_result(
+            ok(
+                {
+                    "licences": entries,
+                    "needs_commercial_check": [
+                        capability.name
+                        for capability in selected
+                        if capability.licence.needs_commercial_check
+                    ],
+                }
+            ),
+            decision,
+        )
 
     @server.tool(name="resolve_place", description=_RESOLVE_PLACE_DESCRIPTION)
     def resolve_place(
@@ -308,6 +551,34 @@ def register(server: Any, context: ServerContext) -> None:
         return tool_result(ok(selection.to_dict()), decision)
 
     return None
+
+
+def _validated_aoi(bbox: list[float] | None) -> tuple[float, float, float, float]:
+    """Check an AOI bbox given as ``[min_lon, min_lat, max_lon, max_lat]``.
+
+    Reversed is refused rather than sorted, for the reason the clipping module
+    gives at more length: a reversed box is as likely to be the wrong
+    convention as a typo, and silently sorting it hides exactly the mistake
+    worth catching.
+    """
+    values = [float(value) for value in (bbox or [])]
+    if len(values) != 4:
+        raise ValueError(
+            f"bbox must be [min_lon, min_lat, max_lon, max_lat]; got "
+            f"{len(values)} value(s)"
+        )
+    min_lon, min_lat, max_lon, max_lat = values
+    if not (-180.0 <= min_lon <= 180.0 and -180.0 <= max_lon <= 180.0):
+        raise ValueError("longitudes must be within -180..180")
+    if not (-90.0 <= min_lat <= 90.0 and -90.0 <= max_lat <= 90.0):
+        raise ValueError("latitudes must be within -90..90")
+    if min_lon >= max_lon or min_lat >= max_lat:
+        raise ValueError(
+            f"bbox (min_lon={min_lon}, min_lat={min_lat}, max_lon={max_lon}, "
+            f"max_lat={max_lat}) is empty or reversed. Expected order is "
+            f"[min_lon, min_lat, max_lon, max_lat]."
+        )
+    return (min_lon, min_lat, max_lon, max_lat)
 
 
 __all__ = ["register"]
