@@ -23,6 +23,10 @@ Implemented so far:
 - **Task 2** — `get_project_summary`, `get_layer_summary`, `get_layers_tree`,
   `get_missing_layers`, `get_project_path_info`
 - **Task 3** — `run_processing_algorithm`, `search_processing_algorithms`
+- **Task 4.0** (partial) — provider interface and capability declarations;
+  `check_api_credentials`
+- **Task 4.2** — `clip_to_aoi`
+- **Task 4.3** — CRS policy and `select_target_crs`
 
 ## Spec deltas
 
@@ -72,11 +76,39 @@ root = "C:/Program Files/QGIS 4.2.1"
 
 Validate the configuration before doing anything else. This checks the install
 at startup rather than failing obscurely at the first tool call
-(`spec/tasks.md` Task 1 acceptance):
+(`spec/tasks.md` Task 1 acceptance), and reports which provider keys are set:
 
 ```sh
 uv run qgis-mcp --check
 ```
+
+## Provider API keys
+
+Two providers need a free API key. The server cannot complete a signup, so
+`--check` and `check_api_credentials` report what is missing and where to get
+it (`spec/design.md` §6.3).
+
+| Provider | Register | Then |
+|---|---|---|
+| OS Data Hub | [osdatahub.os.uk](https://osdatahub.os.uk/) | API Dashboard → My Projects → Create a new project → Add an API to this project. Enable at least **OS Names** and **OS Features** |
+| OpenTopography | [portal.opentopography.org](https://portal.opentopography.org/newUser) | MyOpenTopo Dashboard → Get an API Key → Request API key |
+
+Copy [`qgis-mcp.toml.example`](qgis-mcp.toml.example) to `qgis-mcp.toml` and
+fill in the `[credentials]` table, or set the environment variables
+`QGIS_MCP_OS_DATA_HUB_KEY` / `QGIS_MCP_OPENTOPOGRAPHY_KEY`, which take
+precedence. `qgis-mcp.toml` is gitignored.
+
+Key values never appear in a tool response, a log line or `--check` output —
+only presence, source and length. Length is reported because it distinguishes a
+real key from an empty string left in a config file; no prefix or suffix is,
+because a partial key is still a leaked key.
+
+**Two limits worth knowing before you build on them.** OpenTopography's free
+non-academic allowance is **50 calls per 24 hours**, which is why live fetching
+stays an opt-in integration test rather than part of the default test pass. And
+its free key **does not cover commercial integration** — that needs a separate
+Enterprise key. `check_api_credentials` reports both under
+`commercial_attention`.
 
 ## Running
 

@@ -85,6 +85,21 @@ def _print_report(report: dict, *, as_json: bool) -> None:
     print(f"headless timeout {report['headless_timeout']:.0f}s")
     print(f"project          {report['project_path'] or '(none configured)'}")
 
+    credentials = report.get("credentials") or []
+    if credentials:
+        print()
+        print("provider keys")
+        for entry in credentials:
+            if entry["present"]:
+                # Source and length only. This output gets pasted into issues.
+                print(
+                    f"  {entry['provider']:<16} set ({entry['key_length']} chars, "
+                    f"from {entry['source']})"
+                )
+            else:
+                print(f"  {entry['provider']:<16} NOT SET")
+                print(f"  {'':<16}   register: {entry['registration_url']}")
+
     if "qgis_version" in report:
         print()
         print(f"reported version {report['qgis_version']}")

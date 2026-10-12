@@ -479,6 +479,58 @@ RASTER_STATISTICS = {
 
 
 # ---------------------------------------------------------------------------
+# Clipping expectations (task 4.2)
+# ---------------------------------------------------------------------------
+
+#: The AOI boundary's extent in the conventional (xmin, ymin, xmax, ymax)
+#: order -- the one GeoJSON, OGC, GDAL and shapely all use.
+AOI_BBOX = (
+    AOI_BOUNDARY_RING[0][0],
+    AOI_BOUNDARY_RING[0][1],
+    AOI_BOUNDARY_RING[1][0],
+    AOI_BOUNDARY_RING[2][1],
+)                                     # (440200.0, 180300.0, 440600.0, 180600.0)
+
+#: The same box as QGIS itself wants it: xmin,xmax,ymin,ymax.
+#:
+#: Recorded because the difference is invisible at a glance and silent at
+#: runtime. Passing the tuple above to a clip algorithm unconverted returns a
+#: 12995 x 13000 raster with easting and northing swapped, reported as success.
+AOI_QGIS_EXTENT_STRING = (
+    f"{AOI_BBOX[0]},{AOI_BBOX[2]},{AOI_BBOX[1]},{AOI_BBOX[3]} [{PRIMARY_CRS}]"
+)
+
+#: The DEM clipped to AOI_BBOX. The AOI's edges fall exactly on 20 m cell
+#: boundaries, so there are no partial cells to round:
+#:     400 m / 20 m = 20 columns, 300 m / 20 m = 15 rows
+CLIPPED_DEM_WIDTH = int(AOI_BOUNDARY_WIDTH_M / PIXEL_SIZE_M)       # 20
+CLIPPED_DEM_HEIGHT = int(AOI_BOUNDARY_HEIGHT_M / PIXEL_SIZE_M)     # 15
+CLIPPED_DEM_CELLS = CLIPPED_DEM_WIDTH * CLIPPED_DEM_HEIGHT         # 300
+#: Top-left corner, north-up.
+CLIPPED_DEM_ORIGIN = (AOI_BBOX[0], AOI_BBOX[3])     # (440200.0, 180600.0)
+
+#: The clipped window covers rows 20-34 and columns 10-29, which misses every
+#: special region: the hill is rows 10-14, the coastal inlet columns 0-4, the
+#: basin columns 30-34, the nodata block rows 0-2. So the clip is pure base
+#: ramp, and its range follows from the formula alone:
+#:     min at row 20 / col 10 = 100 + 40 + 10 = 150
+#:     max at row 34 / col 29 = 100 + 68 + 29 = 197
+CLIPPED_DEM_MIN = BASE_INTERCEPT + BASE_ROW_COEFF * 20 + BASE_COL_COEFF * 10
+CLIPPED_DEM_MAX = BASE_INTERCEPT + BASE_ROW_COEFF * 34 + BASE_COL_COEFF * 29
+#: No nodata survives the clip, which is itself worth asserting -- it confirms
+#: the clip took the window it was asked for rather than a shifted one.
+CLIPPED_DEM_NODATA_CELLS = 0
+
+#: A bbox clipping one track part-way, to test geometry truncation rather than
+#: feature selection. track_a runs west-east at y=180050 from x=440050 to
+#: x=440550; this box keeps x from 440100 to 440300, so exactly 200 m of it
+#: survives. track_b lies entirely east of the box.
+TRACK_CLIP_BBOX = (440100.0, 180000.0, 440300.0, 180100.0)
+TRACK_CLIP_FEATURE_COUNT = 1
+TRACK_CLIP_LENGTH_M = 200.0
+
+
+# ---------------------------------------------------------------------------
 # Expected output of all fixtures
 # ---------------------------------------------------------------------------
 

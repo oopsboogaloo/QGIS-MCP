@@ -12,10 +12,11 @@ from __future__ import annotations
 
 import os
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from qgis_mcp_server.credentials import CredentialStore
 from qgis_mcp_server.qgis_install import ENV_QGIS_ROOT, QgisInstall, QgisNotFound, locate
 
 CONFIG_FILENAME = "qgis-mcp.toml"
@@ -46,8 +47,13 @@ class Config:
     #: expression -- need no project at all.
     project_path: Path | None = None
     headless_timeout: float = DEFAULT_HEADLESS_TIMEOUT
+    #: The ``[credentials]`` table, provider name to key. Never logged or
+    #: returned -- see ``credentials.CredentialStore`` for why the values stay
+    #: there and only their status travels.
+    credentials: dict[str, Any] = field(default_factory=dict)
 
     _install: QgisInstall | None = None
+    _credential_store: CredentialStore | None = None
 
     @classmethod
     def load(
@@ -97,7 +103,15 @@ class Config:
                 Path(resolved_project).expanduser() if resolved_project else None
             ),
             headless_timeout=timeout,
+            credentials=dict(file_values.get("credentials") or {}),
         )
+
+    @property
+    def credential_store(self) -> CredentialStore:
+        """Resolves provider keys from the environment and this config."""
+        if self._credential_store is None:
+            self._credential_store = CredentialStore(self.credentials)
+        return self._credential_store
 
     @property
     def install(self) -> QgisInstall:
@@ -151,6 +165,15 @@ class Config:
                 f"versions installed this may not be the one you meant -- set "
                 f"{ENV_QGIS_ROOT} to pin it."
             )
+
+        # Reported as presence and source only. A validation report is
+        # printed to a terminal and may be pasted into an issue, so the key
+        # itself must not be in it.
+        from qgis_mcp_server.providers.catalogue import ALL_CREDENTIALS
+
+        report["credentials"] = [
+            self.credential_store.status(spec).to_dict() for spec in ALL_CREDENTIALS
+        ]
 
         if probe:
             probed = install.probe()

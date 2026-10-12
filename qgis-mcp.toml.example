@@ -1,0 +1,41 @@
+# Local configuration for qgis-mcp. Copy to qgis-mcp.toml and edit.
+#
+# qgis-mcp.toml is gitignored, because it holds absolute paths and API keys.
+# Keep it out of version control even if you move it elsewhere.
+
+[qgis]
+# Install directory. Omit to let the server discover one -- but pin it when
+# several QGIS versions are installed side by side, or discovery may pick a
+# different one than you meant. `qgis-mcp --list-installs` shows the options.
+# root = "C:/Program Files/QGIS 4.2.1"
+
+[project]
+# Project the headless path operates against (REQ-2). Optional: algorithm
+# search, documentation lookup and bare expressions need no project.
+# path = "C:/path/to/your/project.qgz"
+
+[headless]
+# Seconds before a headless child is terminated. Raise it for Processing runs
+# over large rasters; a legitimate run can take minutes.
+# timeout = 300
+
+[credentials]
+# Free registration, both of them. `qgis-mcp --check` reports which are set,
+# and `check_api_credentials` reports it to the agent -- neither ever prints
+# the key itself.
+#
+# Ordnance Survey Data Hub -- https://osdatahub.os.uk/
+#   Sign up, then API Dashboard -> My Projects -> Create a new project ->
+#   Add an API to this project. Enable at least OS Names and OS Features.
+# os_data_hub = ""
+#
+# OpenTopography -- https://portal.opentopography.org/newUser
+#   Create an account, then MyOpenTopo Dashboard -> Get an API Key ->
+#   Request API key. Free non-academic allowance is 50 calls per 24 hours,
+#   and the free key does not cover commercial integration.
+# opentopography = ""
+
+# Either key can also be supplied by environment variable, which takes
+# precedence over this file:
+#   QGIS_MCP_OS_DATA_HUB_KEY
+#   QGIS_MCP_OPENTOPOGRAPHY_KEY
