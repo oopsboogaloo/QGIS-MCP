@@ -20,6 +20,7 @@ from qgis_mcp_server.geocoding import (
     ResolutionCache,
 )
 from qgis_mcp_server.processing import ProcessingRunner
+from qgis_mcp_server.pyqgis_docs import DocsRunner
 from qgis_mcp_server.providers.dispatcher import ProviderDispatcher
 from qgis_mcp_server.providers.opentopography import OpenTopographyAdapter
 from qgis_mcp_server.terrain import TerrainRunner
@@ -49,6 +50,9 @@ class ServerContext:
     acquisition: AcquisitionRunner = field(init=False)
     #: Heightmap export and sea-level modelling (task 5).
     terrain: TerrainRunner = field(init=False)
+    #: PyQGIS API documentation (task 7). Holds the parsed stub index, so
+    #: sharing it across the server means parsing once rather than per call.
+    docs: DocsRunner = field(init=False)
 
     def __post_init__(self) -> None:
         self.headless = HeadlessRunner(self.config)
@@ -65,6 +69,7 @@ class ServerContext:
             adapters=(OpenTopographyAdapter(self.credentials),)
         )
         self.terrain = TerrainRunner(headless=self.headless)
+        self.docs = DocsRunner(config=self.config, headless=self.headless)
         self.acquisition = AcquisitionRunner(
             config=self.config,
             processing=self.processing,

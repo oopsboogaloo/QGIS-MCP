@@ -8,6 +8,7 @@ the partition in ``modes.py`` rather than inferring the mode from context.
 
 from qgis_mcp_server.tools import (
     acquisition,
+    documentation,
     introspection,
     processing_algorithms,
     raw_execution,
@@ -23,6 +24,7 @@ MODULES = (
     acquisition,
     terrain,
     rendering,
+    documentation,
 )
 
 

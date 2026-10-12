@@ -39,6 +39,7 @@ Implemented so far:
 - **Task 5.4** — `model_sea_level_change`
 - **Task 5.5** — `export_vector_layer_for_mesh`
 - **Task 5.6** — `render_map_to_path`
+- **Task 7** — `search_pyqgis_docs`, `get_pyqgis_class_docs`
 
 ## Spec deltas
 
@@ -190,6 +191,27 @@ What is *not* there yet: four of the five declared providers have no adapter, so
 only global elevation is actually fetchable. `search_data_sources` names the gap
 in `providers_not_yet_implemented` rather than letting it look like those
 providers had nothing to offer.
+
+## Looking up the API
+
+`search_pyqgis_docs` indexes the PyQGIS API of the QGIS build actually
+installed, by parsing the type stubs it ships (`_core.pyi` and friends). That
+takes about 0.2 s for 3221 classes and needs no QGIS startup, so lookup is
+instant — and the signatures describe *this* build rather than whatever release
+the online docs happen to show.
+
+It never answers a bare "not found". A misspelled member returns the class's
+real members; a misspelled class returns the nearest names; anything else falls
+back to a substring search:
+
+```
+QgsVectorLayer.featureCont  -> namespace_only   closest: featureCount, selectedFeatureCount, ...
+QgsCoordinateRefSystem      -> nearest_classes  QgsCoordinateReferenceSystem, ...
+hillshade                   -> text             QgsHillshadeFilter, QgsHillshadeRenderer, ...
+```
+
+`get_pyqgis_class_docs` adds the prose, read from the running bindings — which
+costs one QGIS startup the first time a class is asked about and nothing after.
 
 ## Tests
 
