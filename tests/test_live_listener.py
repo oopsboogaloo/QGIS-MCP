@@ -485,6 +485,99 @@ def test_layer_name_mistakes_return_the_available_names(harness):
     assert "survey_points" in envelope.error["message"], envelope.error["message"]
 
 
+def test_the_capture_waits_for_the_canvas_to_finish_rendering(harness):
+    """A capture must not return the canvas as it was before the last change.
+
+    Found by demonstrating the tool: three styling calls and a zoom, then a
+    capture that showed the previous rendering at the previous extent. Nothing
+    errored and the PNG was valid -- it was simply a picture of the past, which
+    for an agent reads as "my change did not work".
+
+    There is no canvas in a headless harness, so the real capture cannot run
+    here. What is tested instead is the waiting itself, against a stub: that it
+    waits while drawing, that it stops when drawing finishes, and -- the part
+    that would freeze QGIS if wrong -- that it gives up at its deadline rather
+    than looping forever.
+    """
+    probe = """
+from qgis_mcp_plugin.commands import _settle_canvas
+
+class Canvas:
+    def __init__(self, drawing_for):
+        self.remaining = drawing_for
+        self.waited = False
+    def isDrawing(self):
+        if self.remaining > 0:
+            self.remaining -= 1
+            return True
+        return False
+    def waitWhileRendering(self):
+        self.waited = True
+
+class Forever:
+    def isDrawing(self):
+        return True
+    def waitWhileRendering(self):
+        raise AssertionError("must not block when the deadline has passed")
+
+idle = _settle_canvas(Canvas(0))
+busy = _settle_canvas(Canvas(3))
+import time as _time
+_started = _time.monotonic()
+stuck = _settle_canvas(Forever(), timeout=0.5)
+_elapsed = _time.monotonic() - _started
+
+result = {
+    "idle": idle,
+    "busy": busy,
+    "stuck": stuck,
+    "stuck_elapsed": _elapsed,
+}
+"""
+    with harness.connect() as conversation:
+        envelope = conversation.call("execute_pyqgis_code", code=probe)
+    assert envelope.ok, describe(envelope.error)
+    report = envelope.result["result"]
+
+    # An idle canvas is captured immediately.
+    assert report["idle"]["render_complete"] is True
+    assert report["idle"]["render_waited"] is False
+
+    # A busy one is waited for, and reported as complete once it settles.
+    assert report["busy"]["render_waited"] is True, describe(report["busy"])
+    assert report["busy"]["render_complete"] is True
+    assert report["busy"]["render_timed_out"] is False
+
+    # One that never finishes gives up, says so, and does not hang QGIS.
+    assert report["stuck"]["render_timed_out"] is True, describe(report["stuck"])
+    assert report["stuck"]["render_complete"] is False
+    assert report["stuck_elapsed"] < 10, (
+        f"the wait overran its 0.5s deadline by a long way "
+        f"({report['stuck_elapsed']:.1f}s); on the main thread that is a frozen "
+        f"QGIS"
+    )
+
+
+def test_both_captures_wait_before_grabbing():
+    """The window contains the canvas, so it goes stale the same way.
+
+    Asserted on the source because neither capture can run without a GUI, and
+    a wait that was added to one and forgotten on the other is exactly the
+    asymmetry that would survive every other test here.
+    """
+    source = (
+        Path(__file__).parent.parent / "qgis_mcp_plugin" / "commands.py"
+    ).read_text(encoding="utf-8")
+
+    for command in ("get_screenshot_of_canvas", "get_screenshot_of_window"):
+        start = source.index(f"def {command}(")
+        body = source[start : source.index("\ndef ", start + 1)]
+        assert "_settle_canvas" in body, (
+            f"{command} grabs without waiting for the render to finish, so it "
+            f"can return the canvas as it was before the caller's last change"
+        )
+
+
 def test_canvas_commands_report_the_interface_as_missing(harness):
     """The limit of headless testing, stated as its own assertion.
 

@@ -16,6 +16,7 @@ import contextlib
 import io
 import os
 import tempfile
+import time
 import traceback
 from typing import Any, Callable
 
@@ -355,6 +356,61 @@ def _png_within_cap(image, cap: int) -> tuple[bytes, dict[str, Any]]:
         )
 
 
+#: How long to let the canvas finish rendering before capturing it.
+#:
+#: Generous: the point is to outlast a slow WMS or a large raster, and a
+#: capture that waited is always more useful than one that did not.
+RENDER_SETTLE_TIMEOUT = 30.0
+
+
+def _settle_canvas(canvas, timeout: float = RENDER_SETTLE_TIMEOUT) -> dict[str, Any]:
+    """Wait for the canvas to finish rendering, and say whether it did.
+
+    Without this, a capture returns whatever the canvas last painted, which is
+    the single most misleading thing this tool could do: an agent changes a
+    style, asks for a screenshot, and is shown the state *before* its own
+    change. It then concludes the change did not work and tries something else.
+    Nothing errors, and the image is a real PNG -- it is simply of the past.
+
+    That is not hypothetical either. It was found by demonstrating the tool:
+    three styling calls and a zoom, then a capture that showed the old
+    rendering at the old extent, milliseconds after the zoom returned.
+
+    ``canvas.grab()`` paints the widget, and the widget paints the *cached* map
+    image. A render job runs on worker threads, so the cache is only current
+    once that job is done. ``refresh()`` merely schedules one -- it fires on a
+    zero-interval timer -- so the event loop has to turn before the job even
+    starts, which is why processing events comes first and the wait second.
+
+    Returns what happened, because a capture that gave up waiting is still
+    worth returning and the caller should be told which kind it is.
+    """
+    from qgis.PyQt.QtCore import QCoreApplication, QEventLoop
+
+    deadline = time.monotonic() + timeout
+
+    # Let any queued refresh actually start. A repaint triggered by the
+    # previous command is sitting on a timer at this point, not running.
+    QCoreApplication.processEvents(QEventLoop.ProcessEventsFlag.AllEvents, 50)
+
+    waited = False
+    while canvas.isDrawing() and time.monotonic() < deadline:
+        waited = True
+        QCoreApplication.processEvents(QEventLoop.ProcessEventsFlag.AllEvents, 50)
+
+    # Blocks until the current job finishes. Belt and braces over the loop
+    # above, which can miss a job that starts between two checks.
+    if time.monotonic() < deadline:
+        canvas.waitWhileRendering()
+
+    still_drawing = bool(canvas.isDrawing())
+    return {
+        "render_waited": waited,
+        "render_complete": not still_drawing,
+        "render_timed_out": still_drawing,
+    }
+
+
 def get_screenshot_of_canvas(params: dict[str, Any]) -> dict[str, Any]:
     """Render the current map canvas to a PNG (REQ-5).
 
@@ -370,6 +426,7 @@ def get_screenshot_of_canvas(params: dict[str, Any]) -> dict[str, Any]:
             f"10000."
         )
 
+    render = _settle_canvas(canvas)
     pixmap = canvas.grab()
     data, meta = _png_within_cap(pixmap.toImage(), cap)
     extent = canvas.extent()
@@ -377,6 +434,7 @@ def get_screenshot_of_canvas(params: dict[str, Any]) -> dict[str, Any]:
         "format": "png",
         "image_base64": base64.b64encode(data).decode("ascii"),
         **meta,
+        **render,
         "extent": [
             extent.xMinimum(),
             extent.yMinimum(),
@@ -390,14 +448,19 @@ def get_screenshot_of_canvas(params: dict[str, Any]) -> dict[str, Any]:
 
 def get_screenshot_of_window(params: dict[str, Any]) -> dict[str, Any]:
     """Grab the whole QGIS window, for layout and dialog state."""
-    window = _iface().mainWindow()
+    interface = _iface()
+    window = interface.mainWindow()
     cap = int(params.get("byte_cap") or DEFAULT_SCREENSHOT_BYTE_CAP)
+    # The window contains the canvas, so it is stale in the same way and for
+    # the same reason -- see _settle_canvas.
+    render = _settle_canvas(interface.mapCanvas())
     pixmap = window.grab()
     data, meta = _png_within_cap(pixmap.toImage(), cap)
     return {
         "format": "png",
         "image_base64": base64.b64encode(data).decode("ascii"),
         **meta,
+        **render,
         "window_title": window.windowTitle(),
     }
 
