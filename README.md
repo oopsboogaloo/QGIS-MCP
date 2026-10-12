@@ -23,8 +23,10 @@ Implemented so far:
 - **Task 2** — `get_project_summary`, `get_layer_summary`, `get_layers_tree`,
   `get_missing_layers`, `get_project_path_info`
 - **Task 3** — `run_processing_algorithm`, `search_processing_algorithms`
-- **Task 4.0** (partial) — provider interface and capability declarations;
-  `check_api_credentials`
+- **Task 4.0** — provider interface, capability declarations, and the
+  dispatcher (coverage pre-filtering, bounded fan-out, REQ-10 partial
+  results); `check_api_credentials`
+- **Task 4.1** — `resolve_place` (Nominatim; the two UK gazetteers deferred)
 - **Task 4.2** — `clip_to_aoi`
 - **Task 4.3** — CRS policy and `select_target_crs`
 
@@ -39,6 +41,7 @@ amended.
 | `design.md` §2.4 | Use the **FastMCP** decorator API | FastMCP was renamed `MCPServer` in Python SDK 2.x (`from mcp.server.mcpserver import MCPServer`) | Same decorator API, same Pydantic schema derivation — only the import changed. Decision stands; pinned `mcp>=2.3.0` |
 | `design.md` §3.2 | Headless falls back to "a generated standalone PyQGIS script" | Templating agent-authored code into a source file breaks on quoting, and reports traceback line numbers against the generated file rather than the submitted snippet | Code crosses the boundary as **JSON data** to a static runner. Same process topology, same fallback role — see `src/qgis_mcp_server/_child/runner.py` |
 | `requirements.md` REQ-4 | Gates "delete a layer, overwrite a project file, or modify features" | A Processing destination pointing at an existing file is none of those literally, but is the same irreversible local change | `run_processing_algorithm` gates an existing destination *and* any `.qgz`/`.qgs` output behind `confirm=true`. An interpretation, not a silent extension — a destination that does not exist yet is never gated |
+| `tasks.md` Task 4.1 | Three geocoders: Nominatim, ONS Open Geography, OS Names | Both UK gazetteers return EPSG:27700 coordinates, and converting them to the 4326 the AOI convention requires needs a PROJ transform — a different shape of adapter from Nominatim's single stdlib GET | Nominatim implemented, and it delivers the whole REQ-9 contract including boundary polygons. The two UK gazetteers are deferred to task 4.7, which already owns transforms; the tiering mechanism is in place so each is an adapter rather than a rework |
 | `tasks.md` Task 0 | Fixtures include "one small real-world clip" | Synthetic values on real SU4080 coordinates cover the CRS *selection* tests without a download | Deferred to task 4.4, where a recorded real provider response is committed as a fixture anyway. See `test-data/README.md` |
 
 ## Requirements
@@ -124,6 +127,15 @@ no QGIS GUI interaction. Generate the fixtures once, then run it:
 ```sh
 uv run python test-data/make_fixtures.py
 uv run pytest
+```
+
+The geocoder fixtures in `test-data/geocoder-cache/` are **committed**, unlike
+the generated ones — they are recorded real Nominatim responses. The suite
+reads them with network access disabled, so a fixture gap fails as an explicit
+error rather than quietly going online and passing. Re-record with:
+
+```sh
+uv run python test-data/record_geocoder_fixtures.py
 ```
 
 See [`test-data/README.md`](test-data/README.md) for the fixture contents and

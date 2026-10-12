@@ -23,6 +23,7 @@ CONFIG_FILENAME = "qgis-mcp.toml"
 
 ENV_PROJECT_PATH = "QGIS_MCP_PROJECT"
 ENV_HEADLESS_TIMEOUT = "QGIS_MCP_HEADLESS_TIMEOUT"
+ENV_CACHE_DIR = "QGIS_MCP_CACHE_DIR"
 
 #: Default ceiling on a headless child. Generous because a legitimate
 #: Processing run over a large raster takes minutes (``design.md`` §3.1 makes
@@ -30,6 +31,22 @@ ENV_HEADLESS_TIMEOUT = "QGIS_MCP_HEADLESS_TIMEOUT"
 #: real work is worse than no timeout at all -- it teaches the caller to
 #: distrust the tool rather than the data.
 DEFAULT_HEADLESS_TIMEOUT = 300.0
+
+
+def default_cache_dir() -> Path:
+    """Per-user cache directory for geocoder resolutions.
+
+    Central rather than beside a project, for the same reason REQ-4b puts
+    backups in a central location: a resolution is about a place, not about one
+    project, and caching it per project would re-query Nominatim for the same
+    village every time a new project opens.
+    """
+    if os.name == "nt":
+        base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+        return Path(base) / "qgis-mcp" / "cache"
+    xdg = os.environ.get("XDG_CACHE_HOME")
+    base = Path(xdg) if xdg else Path.home() / ".cache"
+    return base / "qgis-mcp"
 
 
 class ConfigError(Exception):
@@ -51,6 +68,9 @@ class Config:
     #: returned -- see ``credentials.CredentialStore`` for why the values stay
     #: there and only their status travels.
     credentials: dict[str, Any] = field(default_factory=dict)
+    #: Where recorded geocoder responses live. Keeping Nominatim usage inside
+    #: its policy depends on this being persistent between runs.
+    cache_dir: Path = field(default_factory=default_cache_dir)
 
     _install: QgisInstall | None = None
     _credential_store: CredentialStore | None = None
@@ -104,6 +124,11 @@ class Config:
             ),
             headless_timeout=timeout,
             credentials=dict(file_values.get("credentials") or {}),
+            cache_dir=Path(
+                os.environ.get(ENV_CACHE_DIR)
+                or (file_values.get("geocoding", {}) or {}).get("cache_dir")
+                or default_cache_dir()
+            ).expanduser(),
         )
 
     @property
@@ -151,6 +176,7 @@ class Config:
             "env_file": str(install.env_file) if install.env_file else None,
             "headless_timeout": self.headless_timeout,
             "project_path": str(self.project_path) if self.project_path else None,
+            "cache_dir": str(self.cache_dir),
             "warnings": [],
         }
 

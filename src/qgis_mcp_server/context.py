@@ -13,6 +13,11 @@ from dataclasses import dataclass, field
 from qgis_mcp_server.config import Config
 from qgis_mcp_server.credentials import CredentialStore
 from qgis_mcp_server.headless import HeadlessRunner
+from qgis_mcp_server.geocoding import (
+    NominatimGeocoder,
+    PlaceResolver,
+    ResolutionCache,
+)
 from qgis_mcp_server.processing import ProcessingRunner
 
 
@@ -26,11 +31,21 @@ class ServerContext:
     #: and that costs a QGIS startup to build.
     processing: ProcessingRunner = field(init=False)
     credentials: CredentialStore = field(init=False)
+    #: Shared so the Nominatim rate limiter and the cache are process-wide
+    #: rather than per call -- which is what keeps usage inside policy.
+    places: PlaceResolver = field(init=False)
 
     def __post_init__(self) -> None:
         self.headless = HeadlessRunner(self.config)
         self.processing = ProcessingRunner(self.config)
         self.credentials = self.config.credential_store
+        self.places = PlaceResolver(
+            geocoders=(
+                NominatimGeocoder(
+                    cache=ResolutionCache(self.config.cache_dir / "geocoder")
+                ),
+            )
+        )
 
     def close(self) -> None:
         self.headless.close()

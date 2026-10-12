@@ -1,0 +1,12 @@
+{
+  "params": {
+    "addressdetails": "1",
+    "format": "jsonv2",
+    "limit": "10",
+    "polygon_geojson": "1"
+  },
+  "provider": "nominatim",
+  "query": "Qqzzxx Nonexistent Placename",
+  "response": [],
+  "version": 1
+}

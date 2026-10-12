@@ -19,6 +19,7 @@ from qgis_mcp_server import modes
 from qgis_mcp_server.clipping import ClipRunner
 from qgis_mcp_server.context import ServerContext
 from qgis_mcp_server.crs_policy import AoiError, RasterInput, select_target_crs
+from qgis_mcp_server.geocoding import Resolution
 from qgis_mcp_server.providers.catalogue import ALL_CREDENTIALS, ALL_PROVIDERS
 from qgis_mcp_server.tools.result import tool_result
 
@@ -85,9 +86,82 @@ output looks like plausible terrain and is not the shape of that place.
 """
 
 
+_RESOLVE_PLACE_DESCRIPTION = """\
+Turn a place name into an area of interest.
+
+Returns the bounding box as [min_lon, min_lat, max_lon, max_lat] in EPSG:4326,
+ready to pass to select_target_crs or an acquisition tool, plus a real boundary
+polygon where the geocoder has one — clipping a city's streets to its actual
+built-up boundary rather than its bounding rectangle is the difference between
+a render of a city and a render of a city plus surrounding farmland.
+
+AMBIGUITY IS AN ERROR, NOT A GUESS. If several places match with comparable
+confidence, this returns ambiguous_place with every candidate and its
+administrative context, and you must put the choice to the user rather than
+taking the first. "Stonehenge" matches Wiltshire, Saskatchewan and Queensland;
+"Newport" matches Wales, Rhode Island and more. Picking one silently produces
+data for the wrong continent, and nothing downstream can detect it.
+
+A candidate may carry a warning that it is too small to be a useful AOI — a
+monument rather than a settlement. Read it before acquiring.
+
+Resolutions are cached locally, so repeating a lookup costs nothing and stays
+within the geocoder's usage policy.
+"""
+
+
 def register(server: Any, context: ServerContext) -> None:
     """Register the acquisition-layer tools on ``server``."""
     clipper = ClipRunner(context.processing)
+
+    @server.tool(name="resolve_place", description=_RESOLVE_PLACE_DESCRIPTION)
+    def resolve_place(
+        place: str,
+        limit: int = 10,
+        country_code: str | None = None,
+        confidence_threshold: float | None = None,
+    ) -> dict[str, Any]:
+        """Resolve a place name to an AOI (REQ-9).
+
+        Args:
+            place: Place name. More administrative context resolves better --
+                "Newport, Isle of Wight" beats "Newport".
+            limit: Maximum candidates to consider.
+            country_code: ISO 3166-1 alpha-2 hint, e.g. ``gb``, used to prefer
+                a national gazetteer where one is configured.
+            confidence_threshold: Override how strong a single match must be to
+                resolve without asking. Lower it only deliberately: the whole
+                point of the threshold is that guessing is worse than asking.
+        """
+        decision = modes.resolve("resolve_place")
+        resolution = context.places.resolve(
+            place,
+            limit=limit,
+            country_code=country_code,
+            threshold=confidence_threshold,
+        )
+        payload = resolution.to_dict()
+
+        if resolution.state == Resolution.RESOLVED:
+            return tool_result(ok(payload), decision)
+
+        # Ambiguity and absence come back as errors rather than as a successful
+        # response with a state field, so that a caller cannot treat either as
+        # an answer by overlooking a key. The candidates travel in the error,
+        # which is the same "return candidates, never fail bare" shape the rest
+        # of this server uses (requirements.md section 0).
+        code = {
+            Resolution.AMBIGUOUS: ErrorCode.AMBIGUOUS_PLACE,
+            Resolution.NOT_FOUND: ErrorCode.PLACE_NOT_FOUND,
+            Resolution.UNAVAILABLE: ErrorCode.GEOCODER_UNAVAILABLE,
+        }[resolution.state]
+        # The resolution's own "message" becomes the error message rather than
+        # travelling beside it as a duplicate -- and leaving it in the payload
+        # would collide with error()'s own parameter.
+        detail = {key: value for key, value in payload.items() if key != "message"}
+        return tool_result(
+            error(code, resolution.message or resolution.state, **detail), decision
+        )
 
     @server.tool(name="clip_to_aoi", description=_CLIP_DESCRIPTION)
     def clip_to_aoi(

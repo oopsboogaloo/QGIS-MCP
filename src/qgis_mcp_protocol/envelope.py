@@ -74,6 +74,15 @@ class ErrorCode:
     #: A Processing algorithm ran and reported its own failure -- bad parameter
     #: values, unreadable input, a provider-side error.
     ALGORITHM_FAILED = "algorithm_failed"
+    #: A place name matched several places (REQ-9). Never returned bare: it
+    #: carries the candidates with their administrative context, because the
+    #: caller is the one who can tell them apart.
+    AMBIGUOUS_PLACE = "ambiguous_place"
+    #: A place name matched nothing.
+    PLACE_NOT_FOUND = "place_not_found"
+    #: No geocoder could be reached, which is distinct from a name that does
+    #: not exist -- one is worth retrying and the other is not.
+    GEOCODER_UNAVAILABLE = "geocoder_unavailable"
 
 
 class EnvelopeError(Exception):
