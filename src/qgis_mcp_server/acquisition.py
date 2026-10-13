@@ -561,6 +561,15 @@ class AcquisitionRunner:
                     "licence_tier": plan.dataset.licence.tier,
                     "licence_summary": plan.dataset.licence.summary,
                     "attribution": plan.dataset.licence.attribution,
+                    # The two a person checking a licence actually needs: where
+                    # to read it, and whether it is safe for paid work. Both
+                    # were already on the declaration and simply were not
+                    # being carried through to the layer.
+                    "licence_url": plan.dataset.licence.url,
+                    "commercial_note": plan.dataset.licence.commercial_note,
+                    "needs_commercial_check": plan.dataset.licence.needs_commercial_check,
+                    "data_kind": "vector" if is_vector(plan.dataset) else "raster",
+                    "format": plan.dataset.format,
                     "original_path": str(plan.original_path),
                     "source_crs": plan.dataset.crs,
                     "target_crs": plan.target_crs,

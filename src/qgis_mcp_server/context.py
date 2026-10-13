@@ -26,6 +26,9 @@ from qgis_mcp_server.providers.bgs import BgsAdapter
 from qgis_mcp_server.providers.dispatcher import ProviderDispatcher
 from qgis_mcp_server.providers.environment_agency import EnvironmentAgencyAdapter
 from qgis_mcp_server.providers.natural_earth import NaturalEarthAdapter
+from qgis_mcp_server.providers.openhistoricalmap import (
+    OpenHistoricalMapAdapter,
+)
 from qgis_mcp_server.providers.openstreetmap import OpenStreetMapAdapter
 from qgis_mcp_server.providers.opentopography import OpenTopographyAdapter
 from qgis_mcp_server.providers.os_data_hub import OsDataHubAdapter
@@ -85,6 +88,7 @@ class ServerContext:
                 EnvironmentAgencyAdapter(self.credentials),
                 OpenTopographyAdapter(self.credentials),
                 OpenStreetMapAdapter(self.credentials),
+                OpenHistoricalMapAdapter(self.credentials),
                 BgsAdapter(self.credentials),
                 NaturalEarthAdapter(self.credentials),
             )

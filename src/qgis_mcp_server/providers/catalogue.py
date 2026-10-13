@@ -285,6 +285,49 @@ ENVIRONMENT_AGENCY = ProviderCapability(
     ),
 )
 
+#: OpenHistoricalMap carries the same licence as OSM proper.
+OPENHISTORICALMAP_LICENCE = LicenceDeclaration(
+    tier=LicenceTier.OPEN_SHARE_ALIKE,
+    summary=(
+        "Open Database Licence, as OpenStreetMap: free to use and adapt, with "
+        "attribution, and derived databases must be shared under the same "
+        "terms."
+    ),
+    attribution="© OpenHistoricalMap contributors",
+    commercial_note=(
+        "Commercial use is permitted. The obligation is share-alike: a "
+        "*database* derived from it must be offered under ODbL. Produced maps "
+        "and images are generally a Produced Work and need only attribution."
+    ),
+    url="https://www.openhistoricalmap.org/copyright",
+)
+
+OPENHISTORICALMAP = ProviderCapability(
+    name="openhistoricalmap",
+    long_name="OpenHistoricalMap",
+    protocol_family="overpass",
+    data_types=(
+        DataType.BUILDINGS,
+        DataType.ROADS,
+        DataType.RAILWAYS,
+        DataType.HYDROLOGY,
+        DataType.LANDCOVER,
+        DataType.ADMIN_BOUNDARIES,
+    ),
+    licence=OPENHISTORICALMAP_LICENCE,
+    coverage=None,
+    coverage_description="global in principle; very partial in practice",
+    requires_credentials=False,
+    notes=(
+        "The only historic source here. Features carry start_date and "
+        "end_date, so a year is a filter rather than a guess -- which no other "
+        "provider in this list can answer at all. Volunteer-built and far from "
+        "complete: an empty result usually means nobody has mapped that area "
+        "or period, not that the ground was empty. Ranked last so it never "
+        "wins a search for what is there now."
+    ),
+)
+
 BGS = ProviderCapability(
     name="bgs",
     long_name="British Geological Survey",
@@ -308,6 +351,7 @@ ALL_PROVIDERS = (
     ENVIRONMENT_AGENCY,
     NATURAL_EARTH,
     OPENSTREETMAP,
+    OPENHISTORICALMAP,
     BGS,
 )
 
@@ -341,6 +385,8 @@ __all__ = [
     "EA_LIDAR_LICENCE",
     "ENVIRONMENT_AGENCY",
     "NATURAL_EARTH",
+    "OPENHISTORICALMAP",
+    "OPENHISTORICALMAP_LICENCE",
     "OPENSTREETMAP",
     "OPENTOPOGRAPHY",
     "OPENTOPOGRAPHY_CREDENTIAL",

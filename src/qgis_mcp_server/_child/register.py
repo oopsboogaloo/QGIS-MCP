@@ -45,6 +45,15 @@ PROVENANCE_FIELDS = (
     "licence_tier",
     "licence_summary",
     "attribution",
+    # The two things a person checking a licence actually needs -- where to
+    # read it, and whether it is safe for paid work -- plus what kind of layer
+    # this is. All three were already known at acquisition and simply were not
+    # being carried onto the layer.
+    "licence_url",
+    "commercial_note",
+    "needs_commercial_check",
+    "data_kind",
+    "format",
     "original_path",
     "source_crs",
     "target_crs",
@@ -112,7 +121,13 @@ def main(argv: list[str]) -> int:
         )
         return 1
 
-    from qgis.core import Qgis, QgsApplication, QgsProject, QgsRasterLayer
+    from qgis.core import (
+        Qgis,
+        QgsApplication,
+        QgsProject,
+        QgsRasterLayer,
+        QgsVectorLayer,
+    )
 
     prefix_path = request.get("prefix_path") or os.environ.get("QGIS_PREFIX_PATH")
     if prefix_path:
@@ -143,12 +158,22 @@ def main(argv: list[str]) -> int:
                 # portable -- the same reason the fixture project uses them.
                 project.setFilePathStorage(Qgis.FilePathType.Relative)
 
-        layer = QgsRasterLayer(str(layer_path), str(layer_name))
+        # Vector or raster, from what the provider declared rather than from
+        # the extension. This was hardcoded to raster, which was right while
+        # every adapter served GeoTIFF; three of the adapters added in task 4.8
+        # are vector, so a road network would load as a raster, fail the
+        # validity check below, and be reported as a malformed raster when it
+        # was a perfectly good GeoJSON.
+        data_kind = str(provenance.get("data_kind") or "raster")
+        if data_kind == "vector":
+            layer = QgsVectorLayer(str(layer_path), str(layer_name), "ogr")
+        else:
+            layer = QgsRasterLayer(str(layer_path), str(layer_name))
         if not layer.isValid():
             _emit(
                 error(
                     ErrorCode.BAD_REQUEST,
-                    f"the acquired file did not load as a raster layer: "
+                    f"the acquired file did not load as a {data_kind} layer: "
                     f"{layer_path}. It may be incomplete or in an unexpected "
                     f"format.",
                     mode=ExecutionMode.HEADLESS,
@@ -186,10 +211,42 @@ def main(argv: list[str]) -> int:
         ]
         if attribution:
             summary.append(f"Attribution: {attribution}")
+        licence_url = provenance.get("licence_url") or ""
+        if licence_url:
+            summary.append(f"Licence terms: {licence_url}")
+        if provenance.get("needs_commercial_check"):
+            summary.append(
+                "COMMERCIAL USE NEEDS CHECKING BEFORE THIS ENTERS PAID WORK."
+            )
+        commercial_note = provenance.get("commercial_note") or ""
+        if commercial_note:
+            summary.append(commercial_note)
         metadata.setAbstract("\n".join(summary))
         if attribution:
             metadata.setRights([attribution])
+        # The licence as its own field rather than only as prose. QGIS surfaces
+        # it separately, and a reader scanning for "what am I allowed to do"
+        # looks there first.
+        licences = [
+            part
+            for part in (
+                provenance.get("licence_tier") or "",
+                provenance.get("licence_summary") or "",
+            )
+            if part
+        ]
+        if licences:
+            metadata.setLicenses([" - ".join(licences)])
         layer.setMetadata(metadata)
+
+        # Attribution as a layer property as well, which is what QGIS draws on
+        # a print layout. The metadata above is for someone who goes looking;
+        # this is what puts the credit on an exported map without anyone having
+        # to remember.
+        if attribution:
+            layer.setAttribution(attribution)
+        if licence_url:
+            layer.setAttributionUrl(licence_url)
 
         project.addMapLayer(layer)
 

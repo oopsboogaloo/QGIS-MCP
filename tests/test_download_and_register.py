@@ -383,6 +383,48 @@ def test_provenance_survives_in_the_project(acquired, runner):
     assert result["rights"], result
 
 
+def test_the_licence_travels_onto_the_layer(acquired, runner):
+    """"Where did this come from" has to be answerable from the project alone.
+
+    Attribution and a datum were already recorded. What a person actually needs
+    before putting a layer into paid work is the licence itself, somewhere to
+    read its terms, and a warning when the answer is "check first" — all three
+    were known at acquisition and none of them reached the layer.
+
+    Checked in the two places QGIS looks: the metadata licence field, and the
+    layer attribution property, which is what a print layout draws. A credit
+    that only exists in a dialogue box does not end up on the exported map.
+    """
+    project_path = acquired["registration"]["project_path"]
+    envelope = runner.run_code(
+        "from qgis.core import QgsProject\n"
+        "project = QgsProject.instance()\n"
+        "layer = list(project.mapLayers().values())[0]\n"
+        "result = {\n"
+        "    'licences': list(layer.metadata().licenses()),\n"
+        "    'abstract': layer.metadata().abstract(),\n"
+        "    'attribution': layer.attribution(),\n"
+        "    'attribution_url': layer.attributionUrl(),\n"
+        "}\n",
+        project_path=project_path,
+    )
+    assert envelope.ok, describe(envelope.error)
+    result = envelope.result
+
+    assert result["licences"], "no licence recorded on the layer"
+    assert "mixed" in " ".join(result["licences"]).lower(), result["licences"]
+
+    # OpenTopography's free key does not cover commercial integration, so the
+    # layer must say so where it will be read rather than only in the response
+    # that created it.
+    assert "COMMERCIAL USE NEEDS CHECKING" in result["abstract"], result["abstract"]
+    assert "Enterprise key" in result["abstract"], result["abstract"]
+    assert "opentopography.org" in result["attribution_url"], result
+
+    # The layout credit.
+    assert result["attribution"], "nothing for a print layout to draw"
+
+
 def test_ellipsoidal_dataset_warns_before_download(tools):
     """The 50 m trap, surfaced at the point of choice.
 
