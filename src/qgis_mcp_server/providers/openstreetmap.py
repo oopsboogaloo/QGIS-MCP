@@ -127,6 +127,21 @@ THEMES = (
         ),
     ),
     OsmTheme(
+        data_type=DataType.RAILWAYS,
+        identifier="osm_railways",
+        title="OpenStreetMap railways",
+        selectors=('["railway"]',),
+        bytes_per_square_degree=2_000_000,
+        notes=(
+            "Includes disused and abandoned lines, which are tagged "
+            "railway=disused or railway=abandoned rather than dropped. Worth "
+            "keeping: over LIDAR relief the embankment of a line lifted "
+            "decades ago is often still plainly visible, and the two together "
+            "say more than either alone. Filter on the 'railway' attribute to "
+            "separate operational track from the rest."
+        ),
+    ),
+    OsmTheme(
         data_type=DataType.BUILDINGS,
         identifier="osm_buildings",
         title="OpenStreetMap building footprints",

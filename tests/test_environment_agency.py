@@ -16,6 +16,7 @@ import pytest
 from qgis_mcp_server.providers.base import DataType
 from qgis_mcp_server.providers.environment_agency import (
     MAX_DOWNLOAD_BYTES,
+    OUTPUT_CRS,
     NATIVE_RESOLUTION_M,
     RESOLUTIONS_M,
     SUBSETTING_CRS,
@@ -117,8 +118,14 @@ def test_search_only_answers_for_elevation(adapter):
 
 
 def test_it_is_served_natively_in_british_national_grid(adapter):
-    """Half the reason to prefer it: nothing is reprojected, so nothing is
-    resampled, and no datum transform happens at all."""
+    """Half the reason to prefer it for British work.
+
+    The declared CRS has to match what the service is asked to return, or the
+    pipeline reprojects a file that was already in the right projection. Note
+    the grid is still fitted to the requested box rather than handed over
+    untouched — see OUTPUT_CRS — so this is "no datum transform", not "no
+    resampling".
+    """
     for dataset in adapter.search(TOWN_CENTRE):
         assert dataset.crs == "EPSG:27700"
 
@@ -240,6 +247,46 @@ def test_the_aoi_is_sent_in_4326_with_named_axes(recording, tmp_path):
     assert SUBSETTING_CRS.split("/")[-1] == "4326"
     assert "subset=Long(0.726,0.733)" in url, url
     assert "subset=Lat(52.037,52.042)" in url, url
+
+
+def test_the_output_crs_is_requested_explicitly(recording, tmp_path):
+    """Without it, subsetting in 4326 returns the coverage in 4326 too.
+
+    That silently throws away the main reason to prefer this provider for
+    British work --- and it is invisible until somebody opens the file and
+    checks its projection, which is exactly how it was found.
+    """
+    dataset = recording.search(TOWN_CENTRE)[0]
+    recording.fetch(dataset, TOWN_CENTRE, tmp_path / "dtm.tif")
+    url = recording.requested[-1]
+    assert "outputCrs=" in url, url
+    assert OUTPUT_CRS.endswith("27700")
+
+
+def test_coarsening_uses_scalefactor_not_scaleaxes(recording, tmp_path):
+    """The service answers HTTP 500 to scaleaxes and scalesize.
+
+    Both are in the WCS scaling extension and both are well-formed here, so
+    this is the service's limitation rather than a malformed request --- found
+    by trying each. scalefactor also applies to every axis at once, which is
+    what is wanted: anisotropic cells would make every slope and hillshade
+    wrong.
+    """
+    dataset = recording.search(TOWN_CENTRE)[0]
+    dataset.extra["resolution_m"] = 2.0
+    recording.fetch(dataset, TOWN_CENTRE, tmp_path / "dtm.tif")
+    url = recording.requested[-1]
+    assert "scalefactor=0.5" in url, url
+    assert "scaleaxes" not in url
+    assert "scalesize" not in url
+
+
+def test_a_native_resolution_request_sends_no_scaling(recording, tmp_path):
+    """Asking for 1:1 scaling is a parameter that can only go wrong."""
+    dataset = recording.search(TOWN_CENTRE)[0]
+    dataset.extra["resolution_m"] = 1.0
+    recording.fetch(dataset, TOWN_CENTRE, tmp_path / "dtm.tif")
+    assert "scalefactor" not in recording.requested[-1]
 
 
 def test_a_fetch_over_the_limit_is_refused_before_sending(recording, tmp_path):

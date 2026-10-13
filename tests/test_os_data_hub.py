@@ -36,6 +36,7 @@ LIVE_COLLECTION_IDS = [
     "bld-fts-building-4",
     "trn-ntwk-roadlink-1",
     "trn-ntwk-roadlink-5",
+    "trn-ntwk-railwaylink-1",
     "trn-ntwk-road-1",
     "wtr-fts-water-3",
     "lnd-fts-land-3",
@@ -179,6 +180,27 @@ def test_every_declared_elsewhere_entry_names_an_alternative():
             word in reason
             for word in ("Downloads API", "OpenTopography", "Natural Earth", "XYZ")
         ), (data_type, reason)
+
+
+def test_railways_are_offered_separately_from_roads():
+    """Different networks, and in NGD different collection families."""
+    adapter = FakeAdapter()
+    by_type = {d.data_type: d.identifier for d in adapter.search(SUDBURY)}
+    assert by_type[DataType.ROADS] == "trn-ntwk-roadlink-5"
+    assert by_type[DataType.RAILWAYS] == "trn-ntwk-railwaylink-1"
+
+
+def test_os_rail_notes_point_at_osm_for_lifted_lines():
+    """OS removes track once lifted; OSM keeps the alignment tagged disused.
+
+    A caller after a historic branch line needs telling which source has it,
+    not an empty result from the one that does not.
+    """
+    adapter = FakeAdapter()
+    rail = next(
+        d for d in adapter.search(SUDBURY, (DataType.RAILWAYS,))
+    )
+    assert "OpenStreetMap" in rail.extra["notes"]
 
 
 # ---------------------------------------------------------------------------

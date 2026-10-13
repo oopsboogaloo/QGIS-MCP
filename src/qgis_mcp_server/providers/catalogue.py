@@ -156,6 +156,7 @@ OS_DATA_HUB = ProviderCapability(
         DataType.ELEVATION,
         DataType.BUILDINGS,
         DataType.ROADS,
+        DataType.RAILWAYS,
         DataType.ADMIN_BOUNDARIES,
         DataType.PLACE_NAMES,
         DataType.BASEMAP,
@@ -221,6 +222,7 @@ OPENSTREETMAP = ProviderCapability(
     data_types=(
         DataType.BUILDINGS,
         DataType.ROADS,
+        DataType.RAILWAYS,
         DataType.PLACE_NAMES,
         DataType.HYDROLOGY,
         DataType.LANDCOVER,
@@ -244,10 +246,18 @@ OPENSTREETMAP = ProviderCapability(
 EA_LIDAR_LICENCE = LicenceDeclaration(
     tier=LicenceTier.OPEN_ATTRIBUTION,
     summary=(
-        "UK Open Government Licence: free to use, adapt and sell on, with "
-        "attribution. The WCS declares no fees and no access constraints."
+        "UK Open Government Licence v3: free to use, adapt and sell on, "
+        "including commercially, with attribution. The dataset states "
+        "\"There are no public access constraints to this data\"."
     ),
-    attribution="© Environment Agency copyright and/or database right 2024",
+    # Verbatim from the dataset's own attributionStatement on the Defra Data
+    # Services Platform, year included. Attribution is the one obligation OGL
+    # imposes, so paraphrasing it -- or guessing the year, which this did --
+    # is the one thing not to get wrong.
+    attribution=(
+        "© Environment Agency copyright and/or database right 2022. "
+        "All rights reserved."
+    ),
     url="https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
 )
 
@@ -265,7 +275,8 @@ ENVIRONMENT_AGENCY = ProviderCapability(
     coverage_description="England (envelope; the composite has gaps)",
     requires_credentials=False,
     notes=(
-        "1 m DTM at roughly 900 times the cell count of a 30 m global DEM, "
+        "1 m DTM, vertical accuracy +/-15cm RMSE, at roughly 900 times the "
+        "cell count of a 30 m global DEM, "
         "already in EPSG:27700 so no datum transform is needed. Heights are "
         "Ordnance Datum Newlyn, not the EGM2008 the global DEMs use (REQ-13). "
         "At 4 MB per square kilometre, size is the constraint that shapes "

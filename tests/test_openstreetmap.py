@@ -195,6 +195,39 @@ def test_a_multi_selector_theme_queries_every_selector_and_kind():
     assert query.count('["natural"="water"]') == len(water.element_kinds)
 
 
+def test_railways_are_a_separate_theme_from_roads():
+    """Two networks, not one.
+
+    Folding rail into "roads" would mean a caller asking for a road network
+    silently receiving railway lines through it, which is wrong cartography and
+    wrong topology — they do not connect.
+    """
+    adapter = OpenStreetMapAdapter()
+    roads = adapter.search(SUDBURY, (DataType.ROADS,))
+    rail = adapter.search(SUDBURY, (DataType.RAILWAYS,))
+    assert [d.identifier for d in roads] == ["osm_roads"]
+    assert [d.identifier for d in rail] == ["osm_railways"]
+
+
+def test_the_railway_query_selects_the_railway_tag():
+    rail = next(theme for theme in THEMES if theme.data_type == DataType.RAILWAYS)
+    query = build_query(rail, SUDBURY)
+    assert '["railway"]' in query, query
+    assert '["highway"]' not in query
+
+
+def test_disused_lines_are_kept_rather_than_filtered():
+    """`railway=abandoned` is still a railway, and over LIDAR it is visible.
+
+    The selector is the bare tag rather than railway=rail, so a line lifted
+    decades ago still comes back — which is the point when the embankment is
+    legible in 1 m relief underneath it.
+    """
+    rail = next(theme for theme in THEMES if theme.data_type == DataType.RAILWAYS)
+    assert rail.selectors == ('["railway"]',)
+    assert "abandoned" in rail.notes
+
+
 # ---------------------------------------------------------------------------
 # GeoJSON conversion
 # ---------------------------------------------------------------------------

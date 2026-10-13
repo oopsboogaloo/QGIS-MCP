@@ -39,6 +39,11 @@ class DataType:
     ELEVATION = "elevation"
     BUILDINGS = "buildings"
     ROADS = "roads"
+    #: Rail, separate from roads rather than folded into them. They are
+    #: different networks with different geometry, different attributes and
+    #: different cartography, and a caller asking for "roads" almost never
+    #: wants railway lines mixed in.
+    RAILWAYS = "railways"
     ADMIN_BOUNDARIES = "admin_boundaries"
     PLACE_NAMES = "place_names"
     GEOLOGY = "geology"
@@ -51,6 +56,7 @@ class DataType:
         ELEVATION,
         BUILDINGS,
         ROADS,
+        RAILWAYS,
         ADMIN_BOUNDARIES,
         PLACE_NAMES,
         GEOLOGY,

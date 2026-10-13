@@ -13,10 +13,16 @@ square kilometre, a town-sized AOI is hundreds of megabytes. A request that
 would be absurd is refused before it is sent, with the two things that fix it
 --- a smaller AOI or a coarser resolution --- named rather than implied.
 
-**It is already in EPSG:27700.** The global DEMs arrive in 4326 and must be
-reprojected, which resamples every cell. This does not, so for British work it
-is both sharper and less handled. It also sidesteps the datum question
-entirely: no OSGB36 transform happens, so OSTN15 does not enter into it.
+**It comes back in EPSG:27700.** The global DEMs arrive in 4326 and have to
+be reprojected into a British grid, resampling every cell on the way. This is
+published in EPSG:27700 and is asked to stay there, so no datum transform
+happens in this project at all.
+
+One honest qualification: the AOI is sent in 4326 (see below), so the server
+fits an output grid to the requested box rather than returning the native
+lattice untouched --- a 1 m request comes back at about 1.0014 m. That is a
+resample, and it is nothing like reprojecting a 30 m global DEM across a datum,
+but "untouched" would be the wrong word for it.
 
 **Heights are Ordnance Datum Newlyn, not EGM2008.** REQ-13 exists for exactly
 this. Mixing an ODN surface with an EGM2008 one leaves an offset of up to a
@@ -65,6 +71,14 @@ WCS_VERSION = "2.0.1"
 #: into the coverage's native EPSG:27700, which keeps PROJ out of the
 #: server process entirely.
 SUBSETTING_CRS = "http://www.opengis.net/def/crs/EPSG/0/4326"
+
+#: The CRS the coverage comes back in.
+#:
+#: Asked for explicitly. Without it, a request that subsets in 4326 is
+#: *returned* in 4326 as well --- which silently throws away the main
+#: reason to prefer this provider for British work, and is invisible until
+#: somebody checks the file's projection.
+OUTPUT_CRS = "http://www.opengis.net/def/crs/EPSG/0/27700"
 
 #: Native resolution of the composite, in metres.
 NATIVE_RESOLUTION_M = 1.0
@@ -328,6 +342,7 @@ class EnvironmentAgencyAdapter(OgcAdapter):
                 "coverageId": product.coverage_id,
                 "format": "image/tiff",
                 "subsettingCrs": SUBSETTING_CRS,
+                "outputCrs": OUTPUT_CRS,
             }
         ) + (
             f"&subset=Long({min_lon},{max_lon})"
@@ -336,10 +351,15 @@ class EnvironmentAgencyAdapter(OgcAdapter):
         if resolution != NATIVE_RESOLUTION_M:
             # Server-side resampling: a smaller download, not a big one
             # thinned afterwards.
-            url += (
-                f"&scaleaxes=E({NATIVE_RESOLUTION_M / resolution}),"
-                f"N({NATIVE_RESOLUTION_M / resolution})"
-            )
+            #
+            # ``scalefactor`` rather than ``scaleaxes``. The WCS scaling
+            # extension defines both, and this service answers HTTP 500 to
+            # scaleaxes and scalesize under either axis naming --- an
+            # unhelpful error for a well-formed request, found by trying
+            # each. scalefactor applies to every axis, which is what is
+            # wanted here anyway: anisotropic cells would make every slope
+            # and hillshade wrong.
+            url += f"&scalefactor={NATIVE_RESOLUTION_M / resolution}"
 
         request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
         try:
@@ -373,6 +393,7 @@ __all__ = [
     "BYTES_PER_CELL",
     "MAX_DOWNLOAD_BYTES",
     "NATIVE_RESOLUTION_M",
+    "OUTPUT_CRS",
     "PRODUCTS",
     "PRODUCTS_BY_IDENTIFIER",
     "RESOLUTIONS_M",

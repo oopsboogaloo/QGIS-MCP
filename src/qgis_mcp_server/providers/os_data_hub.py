@@ -113,6 +113,19 @@ THEMES = (
         ),
     ),
     NgdTheme(
+        data_type=DataType.RAILWAYS,
+        family="trn-ntwk-railwaylink",
+        title="OS railway network links",
+        features_per_km2=4,
+        notes=(
+            "The operational rail network as routable links. OS removes lines "
+            "once lifted, so a closed branch appears here only while it is "
+            "still track on the ground --- OpenStreetMap keeps them tagged as "
+            "disused or abandoned, which is the better source for historic "
+            "alignments."
+        ),
+    ),
+    NgdTheme(
         data_type=DataType.BUILDINGS,
         family="bld-fts-building",
         title="OS building footprints",
