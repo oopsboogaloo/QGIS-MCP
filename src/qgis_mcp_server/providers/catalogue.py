@@ -64,7 +64,28 @@ OPENTOPOGRAPHY_CREDENTIAL = CredentialSpec(
     ),
 )
 
-ALL_CREDENTIALS = (OS_DATA_HUB_CREDENTIAL, OPENTOPOGRAPHY_CREDENTIAL)
+MAPTILER_CREDENTIAL = CredentialSpec(
+    provider="maptiler",
+    config_key="maptiler",
+    env_var="QGIS_MCP_MAPTILER_KEY",
+    registration_url="https://cloud.maptiler.com/account/keys/",
+    notes=(
+        "Sign up at cloud.maptiler.com -- no card needed -- then Account -> "
+        "Keys. One key reaches every layer, including the National Library of "
+        "Scotland's georeferenced historic OS sheets (uk-osgb1919, "
+        "uk-oslondon1k1893, uk-osgb10k1888 and others). TWO separate "
+        "permissions apply and the key settles only one: MapTiler's free plan "
+        "is explicitly personal/non-commercial and stamps a logo on the map, "
+        "and the NLS map content carries its own commercial re-use charges on "
+        "top. Both need resolving before historic sheets enter paid work."
+    ),
+)
+
+ALL_CREDENTIALS = (
+    OS_DATA_HUB_CREDENTIAL,
+    OPENTOPOGRAPHY_CREDENTIAL,
+    MAPTILER_CREDENTIAL,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -380,6 +401,7 @@ def providers_for(
 
 __all__ = [
     "ALL_CREDENTIALS",
+    "MAPTILER_CREDENTIAL",
     "ALL_PROVIDERS",
     "BGS",
     "EA_LIDAR_LICENCE",

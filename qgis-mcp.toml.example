@@ -44,6 +44,13 @@
 #   looks fine returns 401.
 # os_data_hub = ""
 #
+# MapTiler -- https://cloud.maptiler.com/account/keys/
+#   Sign up (no card needed), then Account -> Keys. Reaches the National
+#   Library of Scotland's georeferenced historic OS sheets among others.
+#   The free plan is personal/non-commercial and puts a logo on the map,
+#   and NLS charge separately for commercial re-use of the map content.
+# maptiler = ""
+#
 # OpenTopography -- https://portal.opentopography.org/newUser
 #   Create an account, then MyOpenTopo Dashboard -> Get an API Key ->
 #   Request API key. Free non-academic allowance is 50 calls per 24 hours,
@@ -54,3 +61,4 @@
 # precedence over this file:
 #   QGIS_MCP_OS_DATA_HUB_KEY
 #   QGIS_MCP_OPENTOPOGRAPHY_KEY
+#   QGIS_MCP_MAPTILER_KEY

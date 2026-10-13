@@ -562,8 +562,18 @@ def test_check_api_credentials_reports_every_provider(tools):
     reported = {entry["name"] for entry in payload["providers"]}
     assert reported == {provider.name for provider in ALL_PROVIDERS}, reported
 
+    # Derived from ALL_CREDENTIALS rather than listed. A hand-written set here
+    # is a second copy of the declaration, and the two drift: adding a
+    # credential fails this test for a reason that has nothing to do with what
+    # it is checking, while a credential that loses its report still passes.
+    from qgis_mcp_server.providers.catalogue import ALL_CREDENTIALS
+
     credentialled = {entry["provider"] for entry in payload["credentials"]}
-    assert credentialled == {"os_data_hub", "opentopography"}, credentialled
+    declared = {spec.provider for spec in ALL_CREDENTIALS}
+    assert credentialled == declared, (
+        f"declared but not reported: {sorted(declared - credentialled)}; "
+        f"reported but not declared: {sorted(credentialled - declared)}"
+    )
 
 
 def test_check_api_credentials_says_it_is_not_a_gate(tools):
